@@ -1,4 +1,5 @@
 import autograd.numpy as np
+import torch
 
 from .component import Component, ComponentTree
 from . import operator
@@ -358,7 +359,7 @@ class PointSource(Component):
         """
         # this ignores any broadening from the PSFs ...
         C, Ny, Nx = frame.shape
-        morph = np.zeros((Ny, Nx), observation.images.dtype)
+        morph = torch.zeros(Ny, Nx, dtype=observation.images.dtype)
         pixel = frame.get_pixel(sky_coord)
         if frame.psfs is None:
             # Use a single pixel if there is no target PSF
@@ -375,7 +376,7 @@ class PointSource(Component):
 
         self.pixel_center = pixel
         pixel = observation.frame.get_pixel(sky_coord)
-        sed = observation.images[:, pixel[0], pixel[1]].copy()
+        sed = observation.images[:, pixel[0], pixel[1]].clone().detach()
         if observation.frame.psfs is not None:
             # Account for the PSF in the intensity
             sed /= observation.frame.psfs.max(axis=(1, 2))

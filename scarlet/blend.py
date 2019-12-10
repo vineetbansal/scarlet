@@ -1,3 +1,4 @@
+import torch
 import autograd.numpy as np
 from autograd import grad
 
@@ -111,6 +112,19 @@ class Blend(ComponentTree):
         # This calculates the partial derivatives wrt
         # all the seds and morphologies
         gradients = self._grad(*parameters)
+        # ------ Torch grad ----- #
+        # t = []
+        # for p in parameters:
+        #     t.append(torch.tensor(p, requires_grad=True))
+        # x = self._loss2(*t)
+        # x.backward()
+        # gs = []
+        # for _t in t:
+        #     g = _t.grad.data
+        #     gs.append(g)
+        #
+        # print('debug')
+        # ------ Torch grad ----- #
         sed_gradients = gradients[:self.K]
         morph_gradients = gradients[self.K:]
         # set the sed and morphology gradients for each source
@@ -137,6 +151,29 @@ class Blend(ComponentTree):
             total_loss = total_loss + observation.get_loss(model)
         self.mse.append(total_loss._value)
         return total_loss
+
+    def _loss2(self, *parameters):
+        """Loss function for autograd
+
+        This method combines the seds and morphologies
+        into a model that is used to calculate the loss
+        function and update the gradient for each
+        parameter
+        """
+        # Unpack the seds and morphologies
+        seds = parameters[:self.K]
+        morphs = parameters[self.K:]
+
+        #seds = [np.array(x) for x in seds]
+        #morphs = [np.array(x) for x in morphs]
+
+        model = self.get_model2(seds, morphs)
+        # Caculate the total loss function from all of the observations
+        total_loss = 0
+        for observation in self.observations:
+            total_loss = total_loss + observation.get_loss(model)
+        self.mse.append(total_loss)
+        return torch.tensor(total_loss)
 
     def _check_convergence(self, e_rel):
         """Check to see if all of the components have converged

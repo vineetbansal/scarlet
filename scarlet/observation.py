@@ -1,4 +1,5 @@
 import autograd.numpy as np
+import torch
 from scipy import fftpack
 
 from . import interpolation
@@ -203,9 +204,9 @@ class Observation():
         """
         self.frame = Frame(images.shape, wcs=wcs, psfs=psfs, channels=channels, dtype=images.dtype)
 
-        self.images = np.array(images)
+        self.images = torch.tensor(images)
         if weights is not None:
-            self.weights = np.array(weights)
+            self.weights = torch.tensor(weights)
         else:
             self.weights = 1
 
@@ -250,7 +251,8 @@ class Observation():
         self._diff_kernels = None
         if self.frame.psfs is not model_frame.psfs:
             assert self.frame.psfs is not None and model_frame.psfs is not None
-            self._diff_kernels = fft.match_psfs(self.frame.psfs, model_frame.psfs)
+            diff_kernels = fft.match_psfs(self.frame.psfs, model_frame.psfs)
+            self._diff_kernels = diff_kernels
 
         return self
 

@@ -3,6 +3,7 @@ try:
 except ImportError:
     from aenum import Flag, auto
 
+import torch
 import autograd.numpy as np
 
 import logging
@@ -91,8 +92,8 @@ class Component():
     def __init__(self, frame, sed, morph, prior=None, fix_sed=False, fix_morph=False):
         self._frame = frame
         # set sed and morph
-        self._sed = np.array(sed, dtype=self._frame.dtype)
-        self._morph = np.array(morph, dtype=self._frame.dtype)
+        self._sed = torch.tensor(sed, dtype=self._frame.dtype)
+        self._morph = torch.tensor(morph, dtype=self._frame.dtype)
         self.sed_grad = 0
         self.morph_grad = 0
         self.prior = prior
@@ -101,8 +102,8 @@ class Component():
         # Initially the component has not converged
         self.flags = BlendFlag.SED_NOT_CONVERGED | BlendFlag.MORPH_NOT_CONVERGED
         # Store the SED and morphology from the previous iteration
-        self._last_sed = np.zeros(sed.shape, dtype=sed.dtype)
-        self._last_morph = np.zeros(morph.shape, dtype=morph.dtype)
+        self._last_sed = torch.zeros(sed.shape, dtype=sed.dtype)
+        self._last_morph = torch.zeros(morph.shape, dtype=morph.dtype)
 
         # Properties used for indexing in the ComponentTree
         self._index = None
@@ -338,6 +339,34 @@ class ComponentTree():
             (Bands, Height, Width) data cube
         """
         model = np.zeros(self.frame.shape, dtype=self.frame.dtype)
+        for k in range(self.K):
+            if seds is not None and morphs is not None:
+                model = model + self.components[k].get_model(seds[k], morphs[k])
+            else:
+                model = model + self.components[k].get_model()
+
+        return model
+
+    def get_model2(self, seds=None, morphs=None):
+        """Get the model this component tree
+
+        Parameters
+        ----------
+        seds: list of arrays
+            Optional list of seds for each component in the tree.
+            If `seds` is `None` then `self.sed` is used for
+            each component.
+        morphs: list of arrays
+            Optional list of morphologies for each component in
+            the tree. If `morphs` is `None` then `self.morph`
+            is used for each component.
+
+        Returns
+        -------
+        model: array
+            (Bands, Height, Width) data cube
+        """
+        model = torch.tensor(np.zeros(self.frame.shape, dtype=self.frame.dtype))
         for k in range(self.K):
             if seds is not None and morphs is not None:
                 model = model + self.components[k].get_model(seds[k], morphs[k])

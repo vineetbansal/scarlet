@@ -1,7 +1,44 @@
 import operator
 
 import autograd.numpy as np
+import torch
 from scipy import fftpack
+
+
+def roll_n(X, axis, n):
+    f_idx = tuple(slice(None, None, None) if i != axis else slice(0, n, None) for i in range(X.dim()))
+    b_idx = tuple(slice(None, None, None) if i != axis else slice(n, None, None) for i in range(X.dim()))
+    front = X[f_idx]
+    back = X[b_idx]
+    return torch.cat([back, front], axis)
+
+
+def batch_fftshift2d(x):
+    if x.ndim == 3:
+        real = x
+        imag = None
+    else:
+        real, imag = torch.unbind(x, -1)
+
+    for dim in range(1, len(real.size())):
+        n_shift = real.size(dim)//2
+        if real.size(dim) % 2 != 0:
+            n_shift += 1  # for odd-sized images
+        real = roll_n(real, axis=dim, n=n_shift)
+        if imag is not None:
+            imag = roll_n(imag, axis=dim, n=n_shift)
+
+    if imag is not None:
+        return torch.stack((real, imag), -1)
+    else:
+        return real
+
+def batch_ifftshift2d(x):
+    real, imag = torch.unbind(x, -1)
+    for dim in range(len(real.size()) - 1, 0, -1):
+        real = roll_n(real, axis=dim, n=real.size(dim)//2)
+        imag = roll_n(imag, axis=dim, n=imag.size(dim)//2)
+    return torch.stack((real, imag), -1)  # last dim=2 (real&imag)
 
 
 def _centered(arr, newshape):
@@ -24,9 +61,12 @@ def _centered(arr, newshape):
     newshape = np.asarray(newshape)
     currshape = np.array(arr.shape)
 
-    if not np.all(newshape <= currshape):
-        msg = "arr must be larger than newshape in both dimensions, received {0}, and {1}"
-        raise ValueError(msg.format(arr.shape, newshape))
+    try:
+        if not np.all(newshape <= currshape):
+            msg = "arr must be larger than newshape in both dimensions, received {0}, and {1}"
+            raise ValueError(msg.format(arr.shape, newshape))
+    except:
+        print('debug')
 
     startind = (currshape - newshape+1) // 2
     endind = startind + newshape
@@ -62,7 +102,13 @@ def _pad(arr, newshape, axes=None):
             startind = (dS+1) // 2
             endind = dS - startind
             pad_width[axis] = (startind, endind)
-    return np.pad(arr, pad_width, mode="constant")
+
+    if isinstance(arr, torch.Tensor):
+        # padding in torch.nn.functional expects padding to be specified from last- to first-axis, as a flattened tuple
+        pad_width = tuple(y for x in pad_width[::-1] for y in x)
+        return torch.nn.functional.pad(arr, pad_width, mode='constant')
+    else:
+        return np.pad(arr, pad_width, mode="constant")
 
 
 def _get_fft_shape(img1, img2, padding=3, axes=None):
@@ -165,9 +211,16 @@ class Fourier(object):
         result: `Fourier`
             A `Fourier` object generated from the FFT.
         """
-        image = np.fft.irfftn(image_fft, fft_shape, axes=axes)
-        # Shift the center of the image from the bottom left to the center
-        image = np.fft.fftshift(image, axes=axes)
+        if isinstance(image_fft, torch.Tensor):
+            image_fft2 = torch.stack([image_fft, torch.zeros_like(image_fft)], dim=3)
+            image = torch.irfft(image_fft2, len(axes), signal_sizes=fft_shape)  # 6x90x90 = 6x90x46x2
+            image = batch_fftshift2d(image)
+            print('debug')
+        else:
+            image = np.fft.irfftn(image_fft, fft_shape, axes=axes)  # 6x90x90 = (6x90x46, 90x90)
+            # Shift the center of the image from the bottom left to the center
+            image = np.fft.fftshift(image, axes=axes)  # 6x90x90
+
         # Trim the image to remove the padding added
         # to reduce fft artifacts
         image = _centered(image, image_shape)
@@ -199,7 +252,37 @@ class Fourier(object):
                 msg = "fft_shape self.axes must have the same number of dimensions, got {0}, {1}"
                 raise ValueError(msg.format(fft_shape, self.axes))
             image = _pad(self.image, fft_shape, self._axes)
-            self._fft[fft_shape] = np.fft.rfftn(np.fft.ifftshift(image, self._axes), axes=self._axes)
+            if isinstance(image, torch.Tensor):
+
+                # torch ifft only works for complex inputs, and expects the Re/Imag components to be specified
+                # separately in the last dimension
+                image2 = torch.stack([image, torch.zeros_like(image)], dim=3)  # 6x75x100x2
+                image = image.detach().numpy()
+                correct2a = np.fft.rfftn(np.fft.ifftshift(image, self._axes), axes=self._axes)
+
+                yy = batch_ifftshift2d(image2)  # 6x75x100x2
+                correct2b = torch.rfft(yy[:,:,:,0], 2, onesided=True)
+
+                assert np.allclose(np.real(correct2a), correct2b[:, :, :, 0].detach().numpy())
+                assert np.allclose(np.imag(correct2a), correct2b[:, :, :, 1].detach().numpy())
+
+                # All imaginary components of the stored results are close to 0
+                # These results are used in division later on.
+                # This is not a problem when dividing 2 complex numbers, but may pose a problem when diving
+                # real and imaginary parts separately.
+                # Ensure that the imaginary component is indeed close to 0 and make it close, but not quite, 0
+                try:
+                    assert(np.allclose(0, correct2b[:,:,:,1].detach().numpy()))
+                except:
+                    raise RuntimeError('NOOOOO')
+                else:
+                    correct2b = correct2b[:,:,:,0]
+
+                self._fft[fft_shape] = correct2b
+            else:
+                correct1 = np.fft.ifftshift(image, self._axes)
+                correct2 = np.fft.rfftn(correct1, axes=self._axes)
+                self._fft[fft_shape] = correct2
         return self._fft[fft_shape]
 
     def __len__(self):
@@ -230,7 +313,19 @@ class Fourier(object):
         return self.image.sum(axis)
 
     def max(self, axis=None):
-        return self.image.max(axis=axis)
+        # IAMHERE: Not correct, should return a vector
+        # Doesn't torch support multiple dims??
+        if isinstance(self.image, torch.Tensor):
+            if axis is None:
+                return self.image.max()
+            else:
+                # Torch doesn't support multiple axes in max; hence the loop
+                im = self.image
+                for ax in axis:
+                    im = im.max(dim=ax, keepdim=True).values
+                return torch.squeeze(im)
+        else:
+            return self.image.max(axis=axis)
 
     def __getitem__(self, index):
         # Make the index a tuple
