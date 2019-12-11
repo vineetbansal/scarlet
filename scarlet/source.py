@@ -7,6 +7,7 @@ from . import update
 from . import measurement
 from .interpolation import get_projection_slices
 from .psf import generate_psf_image, gaussian
+from scarlet import TORCH
 
 import logging
 
@@ -35,7 +36,10 @@ def get_pixel_sed(sky_coord, observation):
     """
 
     pixel = observation.frame.get_pixel(sky_coord)
-    sed = observation.images[:, pixel[0], pixel[1]].copy()
+    if TORCH:
+        sed = observation.images[:, pixel[0], pixel[1]].clone()
+    else:
+        sed = observation.images[:, pixel[0], pixel[1]].copy()
     return sed
 
 
@@ -122,19 +126,34 @@ def build_detection_coadd(sed, bg_rms, observation, thresh=1):
         The minimum value in `detect` to include in detection.
     """
     C = len(sed)
-    if np.any(bg_rms <= 0):
-        raise ValueError("bg_rms must be greater than zero in all channels")
+    if TORCH:
+        if torch.any(bg_rms <= 0):
+            raise ValueError("bg_rms must be greater than zero in all channels")
 
-    positive = [ c for c in range(C) if sed[c] > 0 ]
-    positive_img = [observation.images[c] for c in positive]
-    positive_bgrms = np.array([bg_rms[c] for c in positive])
-    weights = np.array([sed[c] / bg_rms[c] ** 2 for c in positive])
-    jacobian = np.array([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
-    detect = np.einsum('i,i...', weights, positive_img) / jacobian
+        positive = [c for c in range(C) if sed[c] > 0]
+        positive_img = torch.stack([observation.images[c] for c in positive])
+        positive_bgrms = torch.tensor([bg_rms[c] for c in positive])
+        weights = torch.tensor([sed[c] / bg_rms[c] ** 2 for c in positive])
+        jacobian = torch.tensor([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
+        detect = torch.einsum('i,i...', weights, positive_img) / jacobian
 
-    # thresh is multiple above the rms of detect (weighted variance across channels)
-    bg_cutoff = thresh * np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
-    return detect, bg_cutoff
+        # thresh is multiple above the rms of detect (weighted variance across channels)
+        bg_cutoff = thresh * np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
+        return detect, bg_cutoff
+    else:
+        if np.any(bg_rms <= 0):
+            raise ValueError("bg_rms must be greater than zero in all channels")
+
+        positive = [ c for c in range(C) if sed[c] > 0 ]
+        positive_img = [observation.images[c] for c in positive]
+        positive_bgrms = np.array([bg_rms[c] for c in positive])
+        weights = np.array([sed[c] / bg_rms[c] ** 2 for c in positive])
+        jacobian = np.array([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
+        detect = np.einsum('i,i...', weights, positive_img) / jacobian
+
+        # thresh is multiple above the rms of detect (weighted variance across channels)
+        bg_cutoff = thresh * np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
+        return detect, bg_cutoff
 
 
 def init_extended_source(sky_coord, frame, observation, bg_rms,
@@ -145,12 +164,17 @@ def init_extended_source(sky_coord, frame, observation, bg_rms,
     # determine initial SED from peak position, accounting for PSF changes
     sed = get_psf_sed(sky_coord, observation, frame)
 
-    if np.any(sed <= 0):
+    if TORCH:
+        _any, _all = torch.any, torch.all
+    else:
+        _any, _all = np.any, np.all
+
+    if _any(sed <= 0):
         # If the flux in all channels is  <=0,
         # the new sed will be filled with NaN values,
         # which will cause the code to crash later
         msg = "Zero or negative SED {} at y={}, x={}".format(sed, *sky_coord)
-        if np.all(sed <= 0):
+        if _all(sed <= 0):
             logger.warning(msg)
         else:
             logger.info(msg)
@@ -176,7 +200,10 @@ def init_extended_source(sky_coord, frame, observation, bg_rms,
 
     # normalize to unity at peak pixel
     cy, cx = np.array(center).astype(int)
-    center_morph = morph[cy, cx]
+    if TORCH:
+        center_morph = morph[cy, cx].clone()
+    else:
+        center_morph = morph[cy, cx]
     morph /= center_morph
     return sed, morph
 
@@ -359,7 +386,10 @@ class PointSource(Component):
         """
         # this ignores any broadening from the PSFs ...
         C, Ny, Nx = frame.shape
-        morph = torch.zeros(Ny, Nx, dtype=observation.images.dtype)
+        if TORCH:
+            morph = torch.zeros(Ny, Nx, dtype=observation.images.dtype)
+        else:
+            morph = np.zeros((Ny, Nx)).astype(observation.images.dtype)
         pixel = frame.get_pixel(sky_coord)
         if frame.psfs is None:
             # Use a single pixel if there is no target PSF
@@ -372,11 +402,17 @@ class PointSource(Component):
             cy, cx = (np.array(morph.shape) - 1) // 2
             yx0 = int(py - cy - sy), int(px - cx - sx)
             bb, ibb, _ = get_projection_slices(frame.psfs[0].image, morph.shape, yx0)
-            morph[bb] = frame.psfs[0].image[ibb]
+            if TORCH:
+                morph[bb] = torch.tensor(frame.psfs[0].image[ibb])
+            else:
+                morph[bb] = frame.psfs[0].image[ibb]
 
         self.pixel_center = pixel
         pixel = observation.frame.get_pixel(sky_coord)
-        sed = observation.images[:, pixel[0], pixel[1]].clone().detach()
+        if TORCH:
+            sed = observation.images[:, pixel[0], pixel[1]].clone().detach()
+        else:
+            sed = observation.images[:, pixel[0], pixel[1]].copy()
         if observation.frame.psfs is not None:
             # Account for the PSF in the intensity
             sed /= observation.frame.psfs.max(axis=(1, 2))

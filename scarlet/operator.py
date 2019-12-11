@@ -1,5 +1,5 @@
 from functools import partial
-
+import torch
 import numpy as np
 from proxmin.operators import prox_unity_plus
 from proxmin.utils import MatrixAdapter
@@ -8,6 +8,7 @@ from . import observation
 from scipy import fftpack
 
 from .cache import Cache
+from scarlet import TORCH
 
 
 import logging
@@ -33,7 +34,10 @@ def _prox_weighted_monotonic(X, step, weights, didx, offsets, thresh=0):
     """Force an intensity profile to be monotonic based on weighting neighbors
     """
     from . import operators_pybind11
-    operators_pybind11.prox_weighted_monotonic(X.reshape(-1), step, weights, offsets, didx, thresh)
+    if TORCH:
+        operators_pybind11.prox_weighted_monotonic(X.detach().numpy().reshape(-1), step, weights, offsets, didx, thresh)
+    else:
+        operators_pybind11.prox_weighted_monotonic(X.reshape(-1), step, weights, offsets, didx, thresh)
     return X
 
 
@@ -234,8 +238,12 @@ def prox_sdss_symmetry(X, step):
     This function uses the *minimum* of the two
     symmetric pixels in the update.
     """
-    Xs = np.fliplr(np.flipud(X))
-    X[:] = np.min([X, Xs], axis=0)
+    if TORCH:
+        Xs = torch.flip(X, dims=(0, 1))
+        X = torch.min(X, Xs)
+    else:
+        Xs = np.fliplr(np.flipud(X))
+        X[:] = np.min([X, Xs], axis=0)
     return X
 
 
@@ -267,6 +275,10 @@ def prox_kspace_symmetry(X, step, shift=None, padding=10):
     _fftpack_shape = [fftpack.helper.next_fast_len(d) for d in ((np.array(X.shape)+padding))]
 
     dy, dx = shift
+    if TORCH:
+        dy = dy.detach().numpy()
+        dx = dx.detach().numpy()
+
     #padding with fast shape
     padding = (np.array(_fftpack_shape) - X.shape+padding)//2
 
@@ -301,7 +313,7 @@ def prox_kspace_symmetry(X, step, shift=None, padding=10):
     assert result.shape == shape
 
 
-    return result
+    return torch.tensor(result)
 
 
 def prox_uncentered_symmetry(X, step, center=None, algorithm="kspace", fill=None, shift=None, strength=.5):

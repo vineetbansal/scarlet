@@ -7,6 +7,7 @@ import torch
 import autograd.numpy as np
 
 import logging
+from scarlet import TORCH
 
 logger = logging.getLogger("scarlet.component")
 
@@ -92,8 +93,12 @@ class Component():
     def __init__(self, frame, sed, morph, prior=None, fix_sed=False, fix_morph=False):
         self._frame = frame
         # set sed and morph
-        self._sed = torch.tensor(sed, dtype=self._frame.dtype)
-        self._morph = torch.tensor(morph, dtype=self._frame.dtype)
+        if TORCH:
+            self._sed = torch.tensor(sed, dtype=self._frame.dtype)
+            self._morph = torch.tensor(morph, dtype=self._frame.dtype)
+        else:
+            self._sed = np.array(sed, dtype=self._frame.dtype)
+            self._morph = np.array(morph, dtype=self._frame.dtype)
         self.sed_grad = 0
         self.morph_grad = 0
         self.prior = prior
@@ -102,9 +107,12 @@ class Component():
         # Initially the component has not converged
         self.flags = BlendFlag.SED_NOT_CONVERGED | BlendFlag.MORPH_NOT_CONVERGED
         # Store the SED and morphology from the previous iteration
-        self._last_sed = torch.zeros(sed.shape, dtype=sed.dtype)
-        self._last_morph = torch.zeros(morph.shape, dtype=morph.dtype)
-
+        if TORCH:
+            self._last_sed = torch.zeros(sed.shape, dtype=sed.dtype)
+            self._last_morph = torch.zeros(morph.shape, dtype=morph.dtype)
+        else:
+            self._last_sed = np.zeros(sed.shape, dtype=sed.dtype)
+            self._last_morph = np.zeros(morph.shape, dtype=morph.dtype)
         # Properties used for indexing in the ComponentTree
         self._index = None
         self._parent = None
@@ -338,7 +346,10 @@ class ComponentTree():
         model: array
             (Bands, Height, Width) data cube
         """
-        model = np.zeros(self.frame.shape, dtype=self.frame.dtype)
+        if TORCH:
+            model = torch.zeros(self.frame.shape, dtype=self.frame.dtype)
+        else:
+            model = np.zeros(self.frame.shape, dtype=self.frame.dtype)
         for k in range(self.K):
             if seds is not None and morphs is not None:
                 model = model + self.components[k].get_model(seds[k], morphs[k])

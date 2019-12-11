@@ -3,7 +3,7 @@ import operator
 import autograd.numpy as np
 import torch
 from scipy import fftpack
-
+from scarlet import TORCH
 
 def roll_n(X, axis, n):
     f_idx = tuple(slice(None, None, None) if i != axis else slice(0, n, None) for i in range(X.dim()))
@@ -103,7 +103,7 @@ def _pad(arr, newshape, axes=None):
             endind = dS - startind
             pad_width[axis] = (startind, endind)
 
-    if isinstance(arr, torch.Tensor):
+    if TORCH:
         # padding in torch.nn.functional expects padding to be specified from last- to first-axis, as a flattened tuple
         pad_width = tuple(y for x in pad_width[::-1] for y in x)
         return torch.nn.functional.pad(arr, pad_width, mode='constant')
@@ -212,8 +212,10 @@ class Fourier(object):
             A `Fourier` object generated from the FFT.
         """
         if isinstance(image_fft, torch.Tensor):
-            image_fft2 = torch.stack([image_fft, torch.zeros_like(image_fft)], dim=3)
-            image = torch.irfft(image_fft2, len(axes), signal_sizes=fft_shape)  # 6x90x90 = 6x90x46x2
+            if image_fft.shape[-1] != 2:
+                raise RuntimeError('Need a complex tensor to work with')
+            # image_fft2 = torch.stack([image_fft, torch.zeros_like(image_fft)], dim=3)
+            image = torch.irfft(image_fft, len(axes), signal_sizes=fft_shape)  # 6x90x90 = 6x90x46x2
             image = batch_fftshift2d(image)
             print('debug')
         else:
@@ -271,12 +273,12 @@ class Fourier(object):
                 # This is not a problem when dividing 2 complex numbers, but may pose a problem when diving
                 # real and imaginary parts separately.
                 # Ensure that the imaginary component is indeed close to 0 and make it close, but not quite, 0
-                try:
-                    assert(np.allclose(0, correct2b[:,:,:,1].detach().numpy()))
-                except:
-                    raise RuntimeError('NOOOOO')
-                else:
-                    correct2b = correct2b[:,:,:,0]
+                # try:
+                #     assert(np.allclose(0, correct2b[:,:,:,1].detach().numpy()))
+                # except:
+                #     raise RuntimeError('NOOOOO')
+                # else:
+                #     correct2b = correct2b[:,:,:,0]
 
                 self._fft[fft_shape] = correct2b
             else:
@@ -366,7 +368,24 @@ def _kspace_operation(image1, image2, padding, op, shape):
         msg = "Both images must have the same axes, got {0} and {1}".format(image1.axes, image2.axes)
         raise Exception(msg)
     fft_shape = _get_fft_shape(image1.image, image2.image, padding, image1.axes)
-    convolved_fft = op(image1.fft(fft_shape), image2.fft(fft_shape))
+    complex1 = image1.fft(fft_shape)
+    complex2 = image2.fft(fft_shape)
+    if TORCH:
+        re1, im1 = complex1[:, :, :, 0], complex1[:, :, :, 1]
+        re2, im2 = complex2[:, :, :, 0], complex2[:, :, :, 1]
+        if op is operator.mul:
+            re = re1 * re2 - im1 * im2
+            im = re1 * im2 + re2 * im1
+            convolved_fft = torch.stack((re, im), -1)
+        if op is operator.truediv:
+            denominator = re2 ** 2 + im2 ** 2
+            denominator = torch.stack((denominator, denominator), -1)
+            t1 = re1 * re2 + im1 * im2
+            t2 = im1 * re2 - re1 * im2
+            numerator = torch.stack((t1, t2), -1)
+            convolved_fft = numerator / denominator
+    else:
+        convolved_fft = op(complex1, complex2)
     convolved = Fourier.from_fft(convolved_fft, fft_shape, shape, image1.axes)
     return convolved
 

@@ -5,6 +5,7 @@ from scipy import fftpack
 from . import interpolation
 from . import fft
 from . import resampling
+from scarlet import TORCH
 
 import logging
 
@@ -204,9 +205,16 @@ class Observation():
         """
         self.frame = Frame(images.shape, wcs=wcs, psfs=psfs, channels=channels, dtype=images.dtype)
 
-        self.images = torch.tensor(images)
+        if TORCH:
+            self.images = torch.tensor(images)
+        else:
+            self.images = images
+
         if weights is not None:
-            self.weights = torch.tensor(weights)
+            if TORCH:
+                self.weights = torch.tensor(weights)
+            else:
+                self.weights = weights
         else:
             self.weights = 1
 
@@ -297,7 +305,10 @@ class Observation():
 
         model = self.render(model)
 
-        return 0.5 * np.sum((self.weights * (model - self.images)) ** 2)
+        if TORCH:
+            return 0.5 * torch.sum((self.weights * (model - self.images)) ** 2)
+        else:
+            return 0.5 * np.sum((self.weights * (model - self.images)) ** 2)
 
 
 class LowResObservation(Observation):

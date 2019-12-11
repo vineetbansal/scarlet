@@ -3,9 +3,9 @@ import numpy as np
 from numpy.testing import assert_almost_equal, assert_array_equal
 
 import scarlet
+from scarlet import TORCH
 
-
-def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32, as_tensor=False):
+def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32):
     import scipy.signal
 
     B, Ny, Nx = shape
@@ -50,51 +50,39 @@ def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32, a
         psfs /= psfs.sum(axis=(1, 2))[:, None, None]
 
     channels = range(len(images))
-    if as_tensor:
+    if TORCH:
         return torch.tensor(target_psf), torch.tensor(psfs), torch.tensor(images), channels, torch.tensor(seds), torch.tensor(morphs)
-    return target_psf, psfs, images, channels, seds, morphs
+    else:
+        return target_psf, psfs, images, channels, seds, morphs
 
 
 class TestBlend(object):
-    def ttest_model_render(self):
+    def test_model_render(self):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
         result = init_data(shape, coords, [3, 2, 1], dtype=np.float64)
         target_psf, psfs, images, channels, seds, morphs = result
 
         # Test init with psfs
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
 
         sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
         blend = scarlet.Blend(sources, observation)
         model = observation.render(blend.get_model())
 
-        assert_almost_equal(images, model, decimal=5)
+        if TORCH:
+            assert_almost_equal(images.detach().numpy(), model.detach().numpy(), decimal=5)
 
-        for s0, s in zip(sources, blend.sources):
-            assert_array_equal(s.get_model(), s0.get_model())
+            for s0, s in zip(sources, blend.sources):
+                assert_array_equal(s.get_model(), s0.get_model())
+        else:
+            assert_almost_equal(images, model, decimal=5)
 
-    def test_model_render2(self):
-        shape = (6, 31, 55)
-        coords = [(20, 10), (10, 30), (17, 42)]
-        result = init_data(shape, coords, [3, 2, 1], dtype=np.float64, as_tensor=True)
-        target_psf, psfs, images, channels, seds, morphs = result
+            for s0, s in zip(sources, blend.sources):
+                assert_array_equal(s.get_model(), s0.get_model())
 
-        # Test init with psfs
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64)
-        observation = scarlet.Observation(images, psfs=psfs).match(frame)
-
-        sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
-        blend = scarlet.Blend(sources, observation)
-        model = observation.render(blend.get_model())
-
-        assert_almost_equal(images, model, decimal=5)
-
-        for s0, s in zip(sources, blend.sources):
-            assert_array_equal(s.get_model(), s0.get_model())
-
-    def ttest_fit_point_source(self):
+    def test_fit_point_source(self):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
         amplitudes = [3, 2, 1]
@@ -102,7 +90,7 @@ class TestBlend(object):
         target_psf, psfs, images, channels, seds, morphs = result
         B, Ny, Nx = shape
 
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
         sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
         blend = scarlet.Blend(sources, observation)
@@ -115,28 +103,7 @@ class TestBlend(object):
         assert_almost_equal(blend.mse, [3.875628098330452e-15, 3.875598349723412e-15], decimal=10)
         assert blend.mse[0] > blend.mse[1]
 
-    def ttest_fit_point_source2(self):
-        shape = (6, 31, 55)
-        coords = [(20, 10), (10, 30), (17, 42)]
-        amplitudes = [3, 2, 1]
-        result = init_data(shape, coords, amplitudes, dtype=np.float64, as_tensor=True)
-        target_psf, psfs, images, channels, seds, morphs = result
-        B, Ny, Nx = shape
-
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64)
-        observation = scarlet.Observation(images, psfs=psfs).match(frame)
-        sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
-        blend = scarlet.Blend(sources, observation)
-        # Try to run for 10 iterations
-        # Since the model is already near exact, it should converge
-        # on the 2nd iteration (since it doesn't calculate the initial loss)
-        blend.fit(10)
-
-        assert blend.it == 2
-        assert_almost_equal(blend.mse, [3.875628098330452e-15, 3.875598349723412e-15], decimal=10)
-        assert blend.mse[0] > blend.mse[1]
-
-    def ttest_fit_extended_source(self):
+    def test_fit_extended_source(self):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
         amplitudes = [3, 2, 1]
@@ -144,22 +111,36 @@ class TestBlend(object):
         target_psf, psfs, images, channels, seds, morphs = result
         B, Ny, Nx = shape
 
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
-        bg_rms = np.ones((B,))
+        if TORCH:
+            bg_rms = torch.ones((B,))
+        else:
+            bg_rms = np.ones((B,))
         sources = [scarlet.ExtendedSource(frame, coord, observation, bg_rms) for coord in coords]
         blend = scarlet.Blend(sources, observation)
 
         # Scale the input psfs by the observation and model psfs to ensure
         # the sources were initialized correctly
         psf_scale = observation.frame.psfs.max(axis=(1, 2)) / frame.psfs[0].max()
-        scaled_seds = np.array([c.sed*psf_scale for c in blend.components])
+        if TORCH:
+            scaled_seds = torch.stack([c.sed * psf_scale for c in blend.components])
+        else:
+            scaled_seds = np.array([c.sed*psf_scale for c in blend.components])
 
-        assert_almost_equal(scaled_seds, seds)
+        if TORCH:
+            assert_almost_equal(scaled_seds.detach().numpy(), seds.detach().numpy())
+        else:
+            assert_almost_equal(scaled_seds, seds)
 
         # Fit the model
         blend.fit(100)
         assert blend.it < 20
-        mse = np.array(blend.mse[:-1])
-        _mse = np.array(blend.mse[1:])
-        assert np.all(mse-_mse >= 0)
+        if TORCH:
+            mse = torch.tensor(blend.mse[:-1])
+            _mse = torch.tensor(blend.mse[1:])
+            assert torch.all(mse-_mse >= 0)
+        else:
+            mse = np.array(blend.mse[:-1])
+            _mse = np.array(blend.mse[1:])
+            assert np.all(mse-_mse >= 0)

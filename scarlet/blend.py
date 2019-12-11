@@ -3,7 +3,7 @@ import autograd.numpy as np
 from autograd import grad
 
 from .component import ComponentTree, BlendFlag
-
+from scarlet import TORCH
 import logging
 
 logger = logging.getLogger("scarlet.blend")
@@ -111,20 +111,20 @@ class Blend(ComponentTree):
         parameters = seds + morphs
         # This calculates the partial derivatives wrt
         # all the seds and morphologies
-        gradients = self._grad(*parameters)
-        # ------ Torch grad ----- #
-        # t = []
-        # for p in parameters:
-        #     t.append(torch.tensor(p, requires_grad=True))
-        # x = self._loss2(*t)
-        # x.backward()
-        # gs = []
-        # for _t in t:
-        #     g = _t.grad.data
-        #     gs.append(g)
-        #
-        # print('debug')
-        # ------ Torch grad ----- #
+
+        if TORCH:
+            t = []
+            for p in parameters:
+                t.append(torch.tensor(p, requires_grad=True))
+            x = self._loss(*t)
+            x.backward()
+            gradients = []
+            for _t in t:
+                g = _t.grad.data
+                gradients.append(g)
+        else:
+            gradients = self._grad(*parameters)
+
         sed_gradients = gradients[:self.K]
         morph_gradients = gradients[self.K:]
         # set the sed and morphology gradients for each source
@@ -149,31 +149,11 @@ class Blend(ComponentTree):
         total_loss = 0
         for observation in self.observations:
             total_loss = total_loss + observation.get_loss(model)
-        self.mse.append(total_loss._value)
+        if TORCH:
+            self.mse.append(total_loss)
+        else:
+            self.mse.append(total_loss._value)
         return total_loss
-
-    def _loss2(self, *parameters):
-        """Loss function for autograd
-
-        This method combines the seds and morphologies
-        into a model that is used to calculate the loss
-        function and update the gradient for each
-        parameter
-        """
-        # Unpack the seds and morphologies
-        seds = parameters[:self.K]
-        morphs = parameters[self.K:]
-
-        #seds = [np.array(x) for x in seds]
-        #morphs = [np.array(x) for x in morphs]
-
-        model = self.get_model2(seds, morphs)
-        # Caculate the total loss function from all of the observations
-        total_loss = 0
-        for observation in self.observations:
-            total_loss = total_loss + observation.get_loss(model)
-        self.mse.append(total_loss)
-        return torch.tensor(total_loss)
 
     def _check_convergence(self, e_rel):
         """Check to see if all of the components have converged
@@ -215,8 +195,12 @@ class Blend(ComponentTree):
         # Store a copy of each SED and morphology for the
         # convergence check in the next iteration
         for c in self.components:
-            c._last_sed = c.sed.copy()
-            c._last_morph = c.morph.copy()
+            if TORCH:
+                c._last_sed = c.sed.clone()
+                c._last_morph = c.morph.clone()
+            else:
+                c._last_sed = c.sed.copy()
+                c._last_morph = c.morph.copy()
 
         return converged
 
@@ -240,18 +224,31 @@ class Blend(ComponentTree):
         else:
             # This is still an approximation, but a less crude (albeit slower) one
             C, Ny, Nx = self.frame.shape
-            seds = np.zeros((self.K, C), dtype=self.components[0].sed.dtype)
-            morphs = np.zeros((self.K, Ny, Nx), dtype=self.components[0].morph.dtype)
+            if TORCH:
+                seds = torch.zeros((self.K, C), dtype=self.components[0].sed.dtype)
+                morphs = torch.zeros((self.K, Ny, Nx), dtype=self.components[0].morph.dtype)
+            else:
+                seds = np.zeros((self.K, C), dtype=self.components[0].sed.dtype)
+                morphs = np.zeros((self.K, Ny, Nx), dtype=self.components[0].morph.dtype)
             for k, component in enumerate(self.components):
                 seds[k] = component.sed
                 morphs[k] = component.morph
             _S = morphs.reshape(morphs.shape[0], -1)
-            _SST = _S.dot(_S.T)
-            _ATA = seds.T.dot(seds)
+            if TORCH:
+                _SST = _S.matmul(_S.T)
+                _ATA = seds.T.matmul(seds)
+            else:
+                _SST = _S.dot(_S.T)
+                _ATA = seds.T.dot(seds)
             # Lipschitz constant for A
-            LA = np.real(np.linalg.eigvals(_SST).max())
-            # Lipschitz constant for S
-            LS = np.real(np.linalg.eigvals(_ATA).max())
+            if TORCH:
+                LA = torch.symeig(_SST).eigenvalues.max()
+                # Lipschitz constant for S
+                LS = torch.symeig(_ATA).eigenvalues.max()
+            else:
+                LA = np.real(np.linalg.eigvals(_SST).max())
+                # Lipschitz constant for S
+                LS = np.real(np.linalg.eigvals(_ATA).max())
 
         LA *= len(self.observations)
         LS *= len(self.observations)

@@ -1,6 +1,7 @@
 from functools import partial
 
 import numpy as np
+import torch
 from proxmin.operators import prox_plus, prox_hard, prox_soft
 
 from . import interpolation
@@ -8,7 +9,7 @@ from . import operator
 from . import measurement
 from .bbox import trim
 from .cache import Cache
-
+from scarlet import TORCH
 
 def positive_sed(component):
     """Make the SED non-negative
@@ -126,7 +127,9 @@ def monotonic(component, pixel_center, use_nearest=False, thresh=0, exact=False,
         morph = component.morph
         shape = component.shape[-2:]
         center = pixel_center
-    morph = morph.copy()
+
+    if TORCH:
+        morph = morph.clone().detach()
 
     prox_name = "update.monotonic"
     key = (shape, center, use_nearest, thresh, exact)

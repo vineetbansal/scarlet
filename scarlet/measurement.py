@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from scarlet import TORCH
 
 
 def max_pixel(morph, center=None, window=None):
@@ -80,19 +81,35 @@ def psf_weighted_centroid(morph, psf, pixel_center):
     psf_view = psf[psf_y_range][:, psf_x_range]
 
     morph_view_weighted = morph_view*psf_view
-    morph_view_weighted_sum = torch.sum(morph_view_weighted)
+    if TORCH:
+        morph_view_weighted_sum = torch.sum(morph_view_weighted)
+    else:
+        morph_view_weighted_sum = np.sum(morph_view_weighted)
     # build the indices to use the the centroid calculation
     indy, indx = np.indices(psf_view.shape)
-    first_moment_y = torch.sum(torch.tensor(indy)*morph_view_weighted) / morph_view_weighted_sum
-    first_moment_x = torch.sum(torch.tensor(indx)*morph_view_weighted) / morph_view_weighted_sum
-    # build the offset to go from psf_view frame to psf frame to morph frame
-    # aka move the peak back by the radius of the psf width adusted for the
-    # minimum point in the view
-    offset = torch.tensor([morph_y_range[0], morph_x_range[0]])
+    if TORCH:
+        first_moment_y = torch.sum(torch.tensor(indy)*morph_view_weighted) / morph_view_weighted_sum
+        first_moment_x = torch.sum(torch.tensor(indx)*morph_view_weighted) / morph_view_weighted_sum
+        # build the offset to go from psf_view frame to psf frame to morph frame
+        # aka move the peak back by the radius of the psf width adusted for the
+        # minimum point in the view
+        offset = torch.tensor([morph_y_range[0], morph_x_range[0]])
 
-    whole_pixel_center = torch.round(torch.tensor([first_moment_y, first_moment_x]))
-    dy, dx = whole_pixel_center - torch.tensor([first_moment_y, first_moment_x])
-    morph_pixel_center = tuple((whole_pixel_center + offset).int())
+        whole_pixel_center = torch.round(torch.tensor([first_moment_y, first_moment_x]))
+        dy, dx = whole_pixel_center - torch.tensor([first_moment_y, first_moment_x])
+        morph_pixel_center = tuple((whole_pixel_center + offset).int())
+    else:
+        first_moment_y = np.sum(indy * morph_view_weighted) / morph_view_weighted_sum
+        first_moment_x = np.sum(indx * morph_view_weighted) / morph_view_weighted_sum
+        # build the offset to go from psf_view frame to psf frame to morph frame
+        # aka move the peak back by the radius of the psf width adusted for the
+        # minimum point in the view
+        offset = (morph_y_range[0], morph_x_range[0])
+
+        whole_pixel_center = np.round((first_moment_y, first_moment_x))
+        dy, dx = whole_pixel_center - (first_moment_y, first_moment_x)
+        morph_pixel_center = tuple((whole_pixel_center + offset).astype(int))
+
     return morph_pixel_center, (dy, dx)
 
 
