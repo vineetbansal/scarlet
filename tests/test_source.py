@@ -1,9 +1,11 @@
 import pytest
 import numpy as np
-from numpy.testing import assert_almost_equal, assert_array_equal
+import torch
+from numpy.testing import assert_array_equal, assert_almost_equal
 
 import scarlet
 from scarlet.source import SourceInitError
+from scarlet import TORCH
 
 
 def create_sources(shape, coords, amplitudes=None):
@@ -28,7 +30,10 @@ def create_sources(shape, coords, amplitudes=None):
 
     images = seds.T.dot(morphs.reshape(K, -1)).reshape(shape)
 
-    return seds, morphs, images
+    if TORCH:
+        return torch.tensor(seds), torch.tensor(morphs), torch.tensor(images)
+    else:
+        return seds, morphs, images
 
 
 class TestPointSource(object):
@@ -53,6 +58,8 @@ class TestPointSource(object):
         seds, morphs, images = create_sources(shape, coords, [2, 3, .1])
         psfs = np.array([[[.25, .5, .25], [.5, 1, .5], [.25, .5, .25]]])
         psfs /= psfs.sum(axis=(1,2))[:,None,None]
+        if TORCH:
+            psfs = torch.tensor(psfs)
 
         frame = scarlet.Frame(images.shape)
         obs = scarlet.Observation(images).match(frame)
@@ -74,8 +81,12 @@ class TestPointSource(object):
         src = scarlet.PointSource(frame, coords[0], obs)
 
         # We need to multiply by 4 because of psf normalization
-        assert_almost_equal(src.sed*4, seds[0])
-        assert_almost_equal(morphs[0], src.morph)
+        if TORCH:
+            assert_almost_equal((src.sed * 4).detach().numpy(), seds[0].detach().numpy())
+            assert_almost_equal(morphs[0].detach().numpy(), src.morph.detach().numpy())
+        else:
+            assert_almost_equal(src.sed*4, seds[0])
+            assert_almost_equal(morphs[0], src.morph)
         assert src.pixel_center == coords[0]
 
 
@@ -121,6 +132,9 @@ class TestExtendedSource(object):
 
         # Add noise to the image
         noise = np.random.rand(*shape) * bg_rms[:, None, None]
+        if TORCH:
+            noise = torch.Tensor(noise)
+            bg_rms = torch.Tensor(bg_rms)
         images += noise
 
         frame = scarlet.Frame(shape)
@@ -133,7 +147,10 @@ class TestExtendedSource(object):
             assert_almost_equal(cutoff, true_cutoff[k])
 
         with pytest.raises(ValueError):
-            scarlet.source.build_detection_coadd(seds[0], np.zeros_like(bg_rms), observation, frame)
+            if TORCH:
+                scarlet.source.build_detection_coadd(seds[0], torch.zeros_like(bg_rms), observation, frame)
+            else:
+                scarlet.source.build_detection_coadd(seds[0], np.zeros_like(bg_rms), observation, frame)
 
     def test_init_extended(self):
         shape = (5, 11, 15)
@@ -146,12 +163,19 @@ class TestExtendedSource(object):
 
         true_sed = np.arange(B)
         true_morph = np.zeros(shape[1:])
+        if TORCH:
+            true_sed = torch.Tensor(true_sed).to(torch.float64)
+            true_morph = torch.Tensor(true_morph).to(torch.float64)
+            r = torch.Tensor(r)
 
         skycoord = (np.array(true_morph.shape) - 1) // 2
         cy, cx = skycoord
         true_morph[cy-2:cy+3, cx-2:cx+3] = 3-r
 
-        morph = true_morph.copy()
+        if TORCH:
+            morph = true_morph.clone()
+        else:
+            morph = true_morph.copy()
         morph[5, 3] = 10
 
         # Test function
@@ -159,10 +183,15 @@ class TestExtendedSource(object):
         frame = scarlet.Frame(shape)
         observation = scarlet.Observation(images).match(frame)
         bg_rms = np.ones_like(true_sed) * 1e-3
+        if TORCH:
+            bg_rms = torch.Tensor(bg_rms)
         sed, morph = scarlet.source.init_extended_source(skycoord, frame, observation, bg_rms)
 
         assert_array_equal(sed/3, true_sed)
-        assert_almost_equal(morph*3, true_morph)
+        if TORCH:
+            assert_almost_equal((morph * 3).detach().numpy(), true_morph.detach().numpy())
+        else:
+            assert_almost_equal(morph*3, true_morph)
 
         # Test ExtendedSource.__init__
         src = scarlet.ExtendedSource(frame, skycoord, observation, bg_rms)
@@ -173,34 +202,56 @@ class TestExtendedSource(object):
         assert src.delay_thresh == 10
 
         assert_array_equal(src.sed/3, true_sed)
-        assert_almost_equal(src.morph*3, true_morph)
+        if TORCH:
+            assert_almost_equal((src.morph * 3).detach().numpy(), true_morph.detach().numpy())
+        else:
+            assert_almost_equal(src.morph*3, true_morph)
 
         # Test monotonicity
-        morph = true_morph.copy()
+        if TORCH:
+            morph = true_morph.clone()
+        else:
+            true_morph.copy()
         morph[5, 5] = 2
 
         images = true_sed[:, None, None] * morph[None, :, :]
         frame = scarlet.Frame(shape)
         observation = scarlet.Observation(images).match(frame)
         bg_rms = np.ones_like(true_sed) * 1e-3
+        if TORCH:
+            bg_rms = torch.Tensor(bg_rms)
         sed, morph = scarlet.source.init_extended_source(skycoord, frame, observation, bg_rms,
                                                          symmetric=False)
 
-        _morph = true_morph.copy()
+        if TORCH:
+            _morph = true_morph.clone()
+        else:
+            _morph = true_morph.copy()
         _morph[5, 5] = 1.5816233815926433
         assert_array_equal(sed/3, true_sed)
-        assert_almost_equal(morph*3, _morph)
+        if TORCH:
+            assert_almost_equal((morph*3).detach().numpy(), _morph.detach().numpy())
+        else:
+            assert_almost_equal(morph * 3, _morph)
 
         # Test symmetry
-        morph = true_morph.copy()
+        if TORCH:
+            morph = true_morph.clone()
+        else:
+            morph = true_morph.copy()
         morph[5, 5] = 2
 
         images = true_sed[:, None, None] * morph[None, :, :]
         frame = scarlet.Frame(shape)
         observation = scarlet.Observation(images).match(frame)
         bg_rms = np.ones_like(true_sed) * 1e-3
+        if TORCH:
+            bg_rms = torch.Tensor(bg_rms)
         sed, morph = scarlet.source.init_extended_source(skycoord, frame, observation, bg_rms,
                                                          monotonic=False)
 
         assert_array_equal(sed/3, true_sed)
-        assert_almost_equal(morph*3, true_morph)
+        if TORCH:
+            assert_almost_equal((morph * 3).detach().numpy(), true_morph.detach().numpy())
+        else:
+            assert_almost_equal(morph * 3, true_morph)

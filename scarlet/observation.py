@@ -87,7 +87,7 @@ class Frame():
     dtype: `numpy.dtype`
         Dtype to represent the data.
     """
-    def __init__(self, shape, wcs=None, psfs=None, channels=None, dtype=np.float32):
+    def __init__(self, shape, wcs=None, psfs=None, channels=None, dtype=torch.float64 if TORCH else np.float32):
         assert len(shape) == 3
         self._shape = tuple(shape)
         self.wcs = wcs
@@ -103,7 +103,7 @@ class Frame():
                 logger.warning('PSFs not normalized. Normalizing now..')
                 psfs.normalize()
 
-            if dtype != psfs.image.dtype:
+            if not (dtype is psfs.image.dtype):
                 msg = "Dtypes of PSFs and Frame different. Casting PSFs to {}".format(dtype)
                 logger.warning(msg)
                 psfs.update_dtype(dtype)

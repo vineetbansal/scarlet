@@ -1,8 +1,10 @@
 from functools import partial
 
 import numpy as np
+import torch
 from .interpolation import apply_2D_trapezoid_rule
 from .fft import Fourier
+from scarlet import TORCH
 
 
 def moffat(y, x, y0, x0, amplitude, alpha, beta=1.5):
@@ -86,6 +88,10 @@ def generate_psf_image(func, shape, subsamples=10, normalize=True, **kwargs):
     result = apply_2D_trapezoid_rule(y, x, partial(f, **kwargs), subsamples)
     if normalize:
         result /= result.sum()
+
+    if TORCH:
+        result = torch.tensor(result)
+
     return Fourier(result)
 
 

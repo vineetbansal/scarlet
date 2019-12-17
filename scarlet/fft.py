@@ -5,6 +5,7 @@ import torch
 from scipy import fftpack
 from scarlet import TORCH
 
+
 def roll_n(X, axis, n):
     f_idx = tuple(slice(None, None, None) if i != axis else slice(0, n, None) for i in range(X.dim()))
     b_idx = tuple(slice(None, None, None) if i != axis else slice(n, None, None) for i in range(X.dim()))
@@ -13,32 +14,80 @@ def roll_n(X, axis, n):
     return torch.cat([back, front], axis)
 
 
+def batch_rfftshift2d(x):
+    assert(x.ndim in (2, 3))
+    has_batch_dimension = x.ndim == 3
+
+    if not has_batch_dimension:
+        x = x[None, ...]
+
+    for dim in range(1, len(x.size())):
+        n_shift = x.size(dim) // 2
+        if x.size(dim) % 2 != 0:
+            n_shift += 1
+        x = roll_n(x, axis=dim, n=n_shift)
+
+    if has_batch_dimension:
+        return x
+    else:
+        return x.squeeze(dim=0)
+
+
 def batch_fftshift2d(x):
-    if x.ndim == 3:
-        real = x
-        imag = None
-    else:
-        real, imag = torch.unbind(x, -1)
+    assert(x.ndim in (3, 4))
+    has_batch_dimension = x.ndim == 4
 
+    if not has_batch_dimension:
+        x = x[None, ...]
+
+    real, imag = torch.unbind(x, -1)
     for dim in range(1, len(real.size())):
-        n_shift = real.size(dim)//2
+        n_shift = real.size(dim) // 2
         if real.size(dim) % 2 != 0:
-            n_shift += 1  # for odd-sized images
+            n_shift += 1
         real = roll_n(real, axis=dim, n=n_shift)
-        if imag is not None:
-            imag = roll_n(imag, axis=dim, n=n_shift)
+        imag = roll_n(imag, axis=dim, n=n_shift)
 
-    if imag is not None:
-        return torch.stack((real, imag), -1)
+    if not has_batch_dimension:
+        real = real.squeeze(dim=0)
+        imag = imag.squeeze(dim=0)
+
+    return torch.stack((real, imag), -1)
+
+
+def batch_irfftshift2d(x):
+    assert(x.ndim in (2, 3))
+    has_batch_dimension = x.ndim == 3
+
+    if not has_batch_dimension:
+        x = x[None, ...]
+
+    for dim in range(len(x.size()) - 1, 0, -1):
+        x = roll_n(x, axis=dim, n=x.size(dim) // 2)
+
+    if has_batch_dimension:
+        return x
     else:
-        return real
+        return x.squeeze(dim=0)
+
 
 def batch_ifftshift2d(x):
+    assert(x.ndim in (3, 4))
+    has_batch_dimension = x.ndim == 4
+
+    if not has_batch_dimension:
+        x = x[None, ...]
+
     real, imag = torch.unbind(x, -1)
     for dim in range(len(real.size()) - 1, 0, -1):
-        real = roll_n(real, axis=dim, n=real.size(dim)//2)
-        imag = roll_n(imag, axis=dim, n=imag.size(dim)//2)
-    return torch.stack((real, imag), -1)  # last dim=2 (real&imag)
+        real = roll_n(real, axis=dim, n=real.size(dim) // 2)
+        imag = roll_n(imag, axis=dim, n=imag.size(dim) // 2)
+
+    if not has_batch_dimension:
+        real = real.squeeze(dim=0)
+        imag = imag.squeeze(dim=0)
+
+    return torch.stack((real, imag), -1)
 
 
 def _centered(arr, newshape):
@@ -103,7 +152,7 @@ def _pad(arr, newshape, axes=None):
             endind = dS - startind
             pad_width[axis] = (startind, endind)
 
-    if TORCH:
+    if isinstance(arr, torch.Tensor):
         # padding in torch.nn.functional expects padding to be specified from last- to first-axis, as a flattened tuple
         pad_width = tuple(y for x in pad_width[::-1] for y in x)
         return torch.nn.functional.pad(arr, pad_width, mode='constant')
@@ -216,8 +265,7 @@ class Fourier(object):
                 raise RuntimeError('Need a complex tensor to work with')
             # image_fft2 = torch.stack([image_fft, torch.zeros_like(image_fft)], dim=3)
             image = torch.irfft(image_fft, len(axes), signal_sizes=fft_shape)  # 6x90x90 = 6x90x46x2
-            image = batch_fftshift2d(image)
-            print('debug')
+            image = batch_rfftshift2d(image)
         else:
             image = np.fft.irfftn(image_fft, fft_shape, axes=axes)  # 6x90x90 = (6x90x46, 90x90)
             # Shift the center of the image from the bottom left to the center
@@ -258,15 +306,15 @@ class Fourier(object):
 
                 # torch ifft only works for complex inputs, and expects the Re/Imag components to be specified
                 # separately in the last dimension
-                image2 = torch.stack([image, torch.zeros_like(image)], dim=3)  # 6x75x100x2
+                image2 = torch.stack([image, torch.zeros_like(image)], -1)  # 6x75x100x2
                 image = image.detach().numpy()
                 correct2a = np.fft.rfftn(np.fft.ifftshift(image, self._axes), axes=self._axes)
 
                 yy = batch_ifftshift2d(image2)  # 6x75x100x2
-                correct2b = torch.rfft(yy[:,:,:,0], 2, onesided=True)
+                correct2b = torch.rfft(yy[..., 0], 2, onesided=True)
 
-                assert np.allclose(np.real(correct2a), correct2b[:, :, :, 0].detach().numpy())
-                assert np.allclose(np.imag(correct2a), correct2b[:, :, :, 1].detach().numpy())
+                assert np.allclose(np.real(correct2a), correct2b[..., 0].detach().numpy())
+                assert np.allclose(np.imag(correct2a), correct2b[..., 1].detach().numpy())
 
                 # All imaginary components of the stored results are close to 0
                 # These results are used in division later on.
@@ -306,7 +354,7 @@ class Fourier(object):
             self._fft[shape] *= normalization[indices]
 
     def update_dtype(self, dtype):
-        if self.image.dtype != dtype:
+        if not (self.image.dtype is dtype):
             self._image = self._image.astype(dtype)
             for shape in self._fft:
                 self._fft[shape] = self._fft[shape].astype(dtype)
@@ -315,8 +363,6 @@ class Fourier(object):
         return self.image.sum(axis)
 
     def max(self, axis=None):
-        # IAMHERE: Not correct, should return a vector
-        # Doesn't torch support multiple dims??
         if isinstance(self.image, torch.Tensor):
             if axis is None:
                 return self.image.max()
@@ -371,8 +417,8 @@ def _kspace_operation(image1, image2, padding, op, shape):
     complex1 = image1.fft(fft_shape)
     complex2 = image2.fft(fft_shape)
     if TORCH:
-        re1, im1 = complex1[:, :, :, 0], complex1[:, :, :, 1]
-        re2, im2 = complex2[:, :, :, 0], complex2[:, :, :, 1]
+        re1, im1 = torch.unbind(complex1, -1)
+        re2, im2 = torch.unbind(complex2, -1)
         if op is operator.mul:
             re = re1 * re2 - im1 * im2
             im = re1 * im2 + re2 * im1

@@ -1,5 +1,5 @@
 # convenience: get vanilla NMF and deblend wrapper directly within scarlet
-TORCH = False
+TORCH = True
 
 from . import operator
 from .bbox import *

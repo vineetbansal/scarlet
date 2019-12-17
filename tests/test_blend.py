@@ -1,9 +1,10 @@
 import torch
 import numpy as np
-from numpy.testing import assert_almost_equal, assert_array_equal
+from numpy.testing import assert_array_equal, assert_almost_equal
 
 import scarlet
 from scarlet import TORCH
+
 
 def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32):
     import scipy.signal
@@ -11,21 +12,38 @@ def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32):
     B, Ny, Nx = shape
     K = len(coords)
 
-    if amplitudes is None:
-        amplitudes = np.ones((K,))
-    assert K == len(amplitudes)
+    if TORCH:
+        if amplitudes is None:
+            amplitudes = torch.ones((K,))
+        assert K == len(amplitudes)
 
-    _seds = [
-        np.arange(B, dtype=dtype),
-        np.arange(B, dtype=dtype)[::-1],
-        np.ones((B,), dtype=dtype)
-    ]
-    seds = np.array([_seds[n % 3]*amplitudes[n] for n in range(K)])
+        _seds = [
+            torch.arange(B, dtype=dtype),
+            (B - 1) - torch.arange(B, dtype=dtype),  # torch doesn't support negative steps
+            torch.ones((B,), dtype=dtype)
+        ]
+        seds = torch.stack([_seds[n % 3] * amplitudes[n] for n in range(K)])
 
-    morphs = np.zeros((K, Ny, Nx))
-    for k, coord in enumerate(coords):
-        morphs[k, coord[0], coord[1]] = 1
-    images = seds.T.dot(morphs.reshape(K, -1)).reshape(shape)
+        morphs = torch.zeros((K, Ny, Nx), dtype=dtype)
+        for k, coord in enumerate(coords):
+            morphs[k, coord[0], coord[1]] = 1
+        images = seds.T.matmul(morphs.reshape(K, -1)).reshape(shape)
+    else:
+        if amplitudes is None:
+            amplitudes = np.ones((K,))
+        assert K == len(amplitudes)
+
+        _seds = [
+            np.arange(B, dtype=dtype),
+            np.arange(B, dtype=dtype)[::-1],
+            np.ones((B,), dtype=dtype)
+        ]
+        seds = np.array([_seds[n % 3]*amplitudes[n] for n in range(K)])
+
+        morphs = np.zeros((K, Ny, Nx))
+        for k, coord in enumerate(coords):
+            morphs[k, coord[0], coord[1]] = 1
+        images = seds.T.dot(morphs.reshape(K, -1)).reshape(shape)
 
     if convolve:
         psf_radius = 20
@@ -33,38 +51,57 @@ def init_data(shape, coords, amplitudes=None, convolve=True, dtype=np.float32):
         target_psf = scarlet.psf.generate_psf_image(scarlet.psf.gaussian, psf_shape, sigma=.9).image
         target_psf /= target_psf.sum()
 
-        psfs = np.array([
-            scarlet.psf.generate_psf_image(scarlet.psf.gaussian, psf_shape, sigma=1+.2*b).image
-            for b in range(B)
-        ], dtype=dtype)
-        psfs /= psfs.max(axis=(1, 2))[:, None, None]
-        # Convolve the image with the psf in each channel
-        # Use scipy.signal.convolve without using FFTs as a sanity check
-        images = np.array([scipy.signal.convolve(img, psf, method="direct", mode="same")
-                           for img, psf in zip(images, psfs)], dtype=dtype)
-        # Convolve the true morphology with the target PSF,
-        # also using scipy.signal.convolve as a sanity check
-        morphs = np.array([scipy.signal.convolve(m, target_psf, method="direct", mode="same")
-                           for m in morphs], dtype=dtype)
-        morphs /= morphs.max()
-        psfs /= psfs.sum(axis=(1, 2))[:, None, None]
+        if TORCH:
+            psfs = torch.stack([
+                scarlet.psf.generate_psf_image(scarlet.psf.gaussian, psf_shape, sigma=1 + .2 * b).image
+                for b in range(B)
+            ]).to(dtype)
+
+            from scarlet.torch_utils import tmax
+            psfs /= tmax(psfs, axes=(1, 2))[:, None, None]
+            # Convolve the image with the psf in each channel
+            # Use scipy.signal.convolve without using FFTs as a sanity check
+            images = torch.stack([torch.tensor(scipy.signal.convolve(img, psf, method="direct", mode="same"))
+                               for img, psf in zip(images, psfs)]).to(dtype)
+            # Convolve the true morphology with the target PSF,
+            # also using scipy.signal.convolve as a sanity check
+            morphs = torch.stack([torch.tensor(scipy.signal.convolve(m, target_psf, method="direct", mode="same"))
+                               for m in morphs]).to(dtype)
+            morphs /= morphs.max()
+            psfs /= psfs.sum(axis=(1, 2))[:, None, None]
+
+        else:
+            # dtype = np.float64
+            psfs = np.array([
+                scarlet.psf.generate_psf_image(scarlet.psf.gaussian, psf_shape, sigma=1+.2*b).image
+                for b in range(B)
+            ], dtype=dtype)
+
+            psfs /= psfs.max(axis=(1, 2))[:, None, None]
+            # Convolve the image with the psf in each channel
+            # Use scipy.signal.convolve without using FFTs as a sanity check
+            images = np.array([scipy.signal.convolve(img, psf, method="direct", mode="same")
+                               for img, psf in zip(images, psfs)], dtype=dtype)
+            # Convolve the true morphology with the target PSF,
+            # also using scipy.signal.convolve as a sanity check
+            morphs = np.array([scipy.signal.convolve(m, target_psf, method="direct", mode="same")
+                               for m in morphs], dtype=dtype)
+            morphs /= morphs.max()
+            psfs /= psfs.sum(axis=(1, 2))[:, None, None]
 
     channels = range(len(images))
-    if TORCH:
-        return torch.tensor(target_psf), torch.tensor(psfs), torch.tensor(images), channels, torch.tensor(seds), torch.tensor(morphs)
-    else:
-        return target_psf, psfs, images, channels, seds, morphs
+    return target_psf, psfs, images, channels, seds, morphs
 
 
 class TestBlend(object):
     def test_model_render(self):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
-        result = init_data(shape, coords, [3, 2, 1], dtype=np.float64)
+        result = init_data(shape, coords, [3, 2, 1], dtype=torch.float64 if TORCH else np.float64)
         target_psf, psfs, images, channels, seds, morphs = result
 
         # Test init with psfs
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None])
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
 
         sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
@@ -86,11 +123,11 @@ class TestBlend(object):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
         amplitudes = [3, 2, 1]
-        result = init_data(shape, coords, amplitudes, dtype=np.float64)
+        result = init_data(shape, coords, amplitudes, dtype=torch.float64 if TORCH else np.float64)
         target_psf, psfs, images, channels, seds, morphs = result
         B, Ny, Nx = shape
 
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None])
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
         sources = [scarlet.PointSource(frame, coord, observation) for coord in coords]
         blend = scarlet.Blend(sources, observation)
@@ -107,11 +144,11 @@ class TestBlend(object):
         shape = (6, 31, 55)
         coords = [(20, 10), (10, 30), (17, 42)]
         amplitudes = [3, 2, 1]
-        result = init_data(shape, coords, amplitudes, dtype=np.float64)
+        result = init_data(shape, coords, amplitudes, dtype=torch.float64 if TORCH else np.float64)
         target_psf, psfs, images, channels, seds, morphs = result
         B, Ny, Nx = shape
 
-        frame = scarlet.Frame(images.shape, psfs=target_psf[None], dtype=torch.float64 if TORCH else np.float64)
+        frame = scarlet.Frame(images.shape, psfs=target_psf[None])
         observation = scarlet.Observation(images, psfs=psfs).match(frame)
         if TORCH:
             bg_rms = torch.ones((B,))
