@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from scarlet.numeric import np
 import autograd.scipy as scipy
 from .bbox import Box
 
@@ -63,8 +63,8 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
         if not integrate:
             return np.exp(-X**2/(2*sigma**2))
         else:
-            sqrt2 = np.sqrt(2)
-            return np.sqrt(np.pi/2) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
+            sqrt2 = np.sqrt(np.array(2.))
+            return np.sqrt(np.array(np.pi/2)) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
 
     return (f(Y-y)[:,None] * f(X-x)[None,:])[None,:,:]
 

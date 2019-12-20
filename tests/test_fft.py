@@ -1,9 +1,9 @@
 from functools import partial
 
-import numpy as np
+from scarlet.numeric import np
 import scarlet
 import scarlet.fft as fft
-from numpy.testing import assert_array_equal, assert_almost_equal
+from scarlet.numeric import assert_array_equal, assert_almost_equal
 
 
 class TestCentering(object):

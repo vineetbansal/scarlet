@@ -5,7 +5,7 @@ from .bbox import *
 from . import operator
 
 # make sure that import * above doesn't import its own stock numpy
-import autograd.numpy as np
+from scarlet.numeric import np
 
 import logging
 logger = logging.getLogger("scarlet.source")

@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from scarlet.numeric import np
 from scipy import fftpack
 
 from .frame import Frame

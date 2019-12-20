@@ -1,4 +1,5 @@
-import autograd.numpy as np
+# from scarlet.numeric import np
+import numpy as np
 from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.core import VSpace
 from functools import partial

@@ -1,5 +1,5 @@
 import numpy.ma as ma
-import autograd.numpy as np
+from scarlet.numeric import np
 from autograd import grad
 import proxmin
 from functools import partial

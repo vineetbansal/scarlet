@@ -45,7 +45,7 @@ def escape_ansi_control(error):
 
 class TestDocs:
     def test_docs(self):
-        dirs = 'docs/', 'docs/tutorials/'
+        dirs = '../docs/', '../docs/tutorials/'
         cwd = os.getcwd()
         for dir in dirs:
             os.chdir(dir)

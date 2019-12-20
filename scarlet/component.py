@@ -3,7 +3,7 @@ from .parameter import *
 from . import fft
 from . import interpolation
 from .bbox import Box
-import autograd.numpy as np
+from scarlet.numeric import np
 
 import logging
 logger = logging.getLogger("scarlet.component")
