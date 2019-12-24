@@ -1,6 +1,6 @@
 import pytest
-import numpy as np
-from numpy.testing import assert_array_equal, assert_almost_equal
+from scarlet.numeric import np
+from scarlet.numeric import assert_array_equal, assert_almost_equal
 
 import scarlet
 
@@ -234,7 +234,7 @@ def interpolate_comparison(func, zero_truth, positive_truth, **kwargs):
 
     # negative shift
     result = func(-.103, **kwargs)
-    truth = (truth[0][::-1], -truth[1][::-1])
+    truth = (np.flip(truth[0]), -np.flip(truth[1]))
     assert_almost_equal(result[0], truth[0])
     assert_array_equal(result[1], truth[1])
 

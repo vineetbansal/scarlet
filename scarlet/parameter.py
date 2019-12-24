@@ -1,5 +1,5 @@
 # from scarlet.numeric import np
-import numpy as np
+from scarlet.numeric import np
 from autograd.numpy.numpy_boxes import ArrayBox
 from autograd.core import VSpace
 from functools import partial
@@ -63,8 +63,8 @@ class Parameter(np.ndarray):
     def _data(self):
         return self.view(np.ndarray)
 
-ArrayBox.register(Parameter)
-VSpace.register(Parameter, vspace_maker=VSpace.mappings[np.ndarray])
+#ArrayBox.register(Parameter)
+#VSpace.register(Parameter, vspace_maker=VSpace.mappings[np.ndarray])
 
 def relative_step(X, it, factor=0.1):
     return factor*X.mean(axis=0)

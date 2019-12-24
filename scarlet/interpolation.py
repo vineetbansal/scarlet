@@ -1,4 +1,4 @@
-import numpy as np
+from scarlet.numeric import np
 from .cache import Cache
 from . import fft
 

@@ -1,6 +1,6 @@
 import pytest
-import numpy as np
-from numpy.testing import assert_almost_equal, assert_array_equal
+from scarlet.numeric import np
+from scarlet.numeric import assert_array_equal, assert_almost_equal
 
 import scarlet
 
@@ -23,7 +23,7 @@ class TestCubeComponent:
 
         # everything zero except at one location?
         test_loc = tuple(np.array(on_location) + np.array(origin))
-        mask = np.zeros(model.shape, dtype='bool')
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_array_equal(model[~mask], 0)
         assert model[test_loc] == 1
@@ -52,7 +52,7 @@ class TestFactorizedComponent:
 
         # everything zero except at one location?
         test_loc = tuple(np.array(on_location) + np.array(origin))
-        mask = np.zeros(model.shape, dtype='bool')
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_array_equal(model[~mask], 0)
         assert model[test_loc] == 1

@@ -147,7 +147,7 @@ class TensorBase(Tensor):
         return res
 
     @classmethod
-    def _before_cast(cls, x): return x if isinstance(x,Tensor) else tensor(x)
+    def _before_cast(cls, x): return x if isinstance(x, Tensor) else tensor(x)
 
     def __reduce_ex__(self,proto):
         torch.utils.hooks.warn_if_has_hooks(self)
@@ -157,6 +157,9 @@ class TensorBase(Tensor):
         return (f, args + (self.requires_grad, OrderedDict()))
 
     def __getitem__(self, i):
+        # TODO: Why doesn't this work if i is a TensorBase object?
+        if isinstance(i, TensorBase):
+            i = i.data
         res = super(Tensor, self).__getitem__(i)
         return res.as_subclass(type(self)) if isinstance(res, Tensor) else res
 
