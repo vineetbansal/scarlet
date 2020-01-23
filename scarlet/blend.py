@@ -1,5 +1,5 @@
 import numpy.ma as ma
-from scarlet.numeric import np
+from scarlet.numeric import np, USE_TORCH
 from autograd import grad
 import proxmin
 from functools import partial
@@ -61,12 +61,31 @@ class Blend(ComponentTree):
         X = self.parameters
         n_params = len(X)
 
-        # compute the backward gradient tree
-        grad_logL = grad(self._loss, tuple(range(n_params)))
-        grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
-        _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
-        _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
-        _prox = tuple(x.constraint for x in X)
+        if USE_TORCH:
+            import torch
+            # t = []
+            # for p in X:
+            #     t.append(torch.tensor(p, requires_grad=True))
+            x = self._loss(*X)
+            x.backward()
+            gradients = []
+            for p in X:
+                g = p.grad.data
+                gradients.append(g)
+
+            # compute the backward gradient tree
+            grad_logL = grad(self._loss, tuple(range(n_params)))
+            grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
+            _grad = lambda *X: tuple(l + p for l,p in zip(gradients, grad_logP(*X)))
+            _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
+            _prox = tuple(x.constraint for x in X)
+        else:
+            # compute the backward gradient tree
+            grad_logL = grad(self._loss, tuple(range(n_params)))
+            grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
+            _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
+            _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
+            _prox = tuple(x.constraint for x in X)
 
         # good defaults for adaprox
         scheme = alg_kwargs.pop('scheme', 'amsgrad')
@@ -74,7 +93,7 @@ class Blend(ComponentTree):
         eps = alg_kwargs.pop('eps', 1e-8)
         callback = partial(self._convergence_callback, f_rel=f_rel, callback=alg_kwargs.pop('callback', None))
 
-        converged, G, V = proxmin.adaprox(X, _grad, _step, prox=_prox, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback, **alg_kwargs)
+        converged, G, V = proxmin.adaprox(X, _grad, _step, prox=_prox, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback)
 
         # set convergence and standard deviation from optimizer
         for p,c,g,v in zip(X, converged, G, V):
@@ -96,7 +115,10 @@ class Blend(ComponentTree):
         total_loss = 0
         for observation in self.observations:
             total_loss = total_loss + observation.get_loss(model)
-        self.loss.append(total_loss._value)
+        if USE_TORCH:
+            self.loss.append(total_loss)
+        else:
+            self.loss.append(total_loss._value)
         return total_loss
 
     def _convergence_callback(self, *parameters, it=None, f_rel=1e-3, callback=None):

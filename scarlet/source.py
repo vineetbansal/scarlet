@@ -86,7 +86,7 @@ def get_best_fit_seds(morphs, frame, images):
     K = len(morphs)
     _morph = morphs.reshape(K, -1)
     data = images.reshape(images.shape[0], -1)
-    seds = np.dot(np.linalg.inv(np.dot(_morph, _morph.T)), np.dot(_morph, data.T))
+    seds = np.matmul(np.linalg.inv(np.matmul(_morph, _morph.T)), np.matmul(_morph, data.T))
     return seds
 
 
@@ -118,7 +118,7 @@ def build_detection_coadd(sed, bg_rms, observation):
     positive_bgrms = np.array([bg_rms[c] for c in positive])
     weights = np.array([sed[c] / bg_rms[c] ** 2 for c in positive])
     jacobian = np.array([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
-    detect = np.einsum('i,i...', weights, positive_img) / jacobian
+    detect = np.einsum('i,i...', weights, np.array(positive_img)) / jacobian
 
     # thresh is multiple above the rms of detect (weighted variance across channels)
     bg_cutoff = np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
@@ -134,7 +134,7 @@ def trim_morphology(sky_coord, frame, morph, bg_cutoff, thresh):
         morph[~mask] = 0
 
         # normalize to unity at peak pixel
-        center_morph = morph[pixel_center[0], pixel_center[1]]
+        center_morph = (morph[pixel_center[0], pixel_center[1]]).copy()
         morph /= center_morph
 
         # find fitting bbox
@@ -230,7 +230,7 @@ def init_multicomponent_source(sky_coord, frame, observations, obs_idx=0, flux_p
     morphs = np.zeros((K, Ny, Nx), dtype=morph.dtype)
     morphs[0, :, :] = morph[:, :]
     max_flux = morph.max()
-    percentiles_ = np.sort(flux_percentiles)
+    percentiles_ = np.sort(np.array(flux_percentiles, dtype='float'))
     last_thresh = 0
     for k in range(1, K):
         perc = percentiles_[k - 1]

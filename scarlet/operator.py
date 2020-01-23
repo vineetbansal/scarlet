@@ -1,6 +1,7 @@
 from functools import partial
 
-import numpy as np
+import numpy
+from scarlet.numeric import np
 from proxmin.operators import prox_unity_plus
 from proxmin.utils import MatrixAdapter
 
@@ -15,7 +16,11 @@ def _prox_strict_monotonic(X, step, ref_idx, dist_idx, thresh=0):
     """Force an intensity profile to be monotonic based on nearest neighbor
     """
     from . import operators_pybind11
-    operators_pybind11.prox_monotonic(X.reshape(-1), ref_idx, dist_idx, thresh)
+    from scarlet.numeric import USE_TORCH
+    if USE_TORCH:
+        operators_pybind11.prox_monotonic(X.reshape(-1).numpy(), ref_idx.numpy(), dist_idx.numpy(), thresh)
+    else:
+        operators_pybind11.prox_monotonic(X.reshape(-1), ref_idx, dist_idx, thresh)
     return X
 
 
@@ -23,7 +28,11 @@ def _prox_weighted_monotonic(X, step, weights, didx, offsets, thresh=0):
     """Force an intensity profile to be monotonic based on weighting neighbors
     """
     from . import operators_pybind11
-    operators_pybind11.prox_weighted_monotonic(X.reshape(-1), weights, offsets, didx, thresh)
+    from scarlet.numeric import USE_TORCH
+    if USE_TORCH:
+        operators_pybind11.prox_weighted_monotonic(X.reshape(-1).numpy(), weights.numpy(), offsets.numpy(), didx.numpy(), thresh)
+    else:
+        operators_pybind11.prox_weighted_monotonic(X.reshape(-1), weights, offsets, didx, thresh)
     return X
 
 
@@ -62,7 +71,7 @@ def sort_by_radius(shape, center=None):
     X, Y = np.meshgrid(x, y)
     X = X - cx
     Y = Y - cy
-    distance = np.sqrt(X**2+Y**2)
+    distance = np.sqrt(np.array(X**2+Y**2).astype('float'))
     # Get the indices of the pixels sorted by distance from the peak
     didx = np.argsort(distance.flatten())
     return didx
@@ -100,7 +109,7 @@ def prox_strict_monotonic(shape, use_nearest=False, thresh=0, center=None):
             raise ValueError("Thresholding does not work with nearest neighbor monotonicity")
         monotonicOp = getRadialMonotonicOp(shape, useNearest=True)
         x_idx, ref_idx = sparse.find(monotonicOp.L == 1)[:2]
-        ref_idx = ref_idx[np.argsort(x_idx)]
+        ref_idx = ref_idx[numpy.argsort(x_idx)]
         result = partial(_prox_strict_monotonic, ref_idx=ref_idx.tolist(),
                          dist_idx=didx.tolist(), thresh=thresh)
     else:
@@ -496,7 +505,7 @@ def diagonalizeArray(arr, shape=None, dtype=np.float64):
     return diagonals, mask
 
 
-def diagonalsToSparse(diagonals, shape, dtype=np.float64):
+def diagonalsToSparse(diagonals, shape, dtype=numpy.float64):
     """Convert a diagonalized array into a sparse diagonal matrix
     ``diagonalizeArray`` creates an 8xN array representing the bands that describe the
     interactions of a pixel with its neighbors. This function takes that 8xN array and converts
@@ -536,7 +545,7 @@ def getRadialMonotonicWeights(shape, useNearest=True, minGradient=1, center=None
         X, Y = np.meshgrid(x, y)
         X = X - px
         Y = Y - py
-        distance = np.sqrt(X**2+Y**2)
+        distance = np.sqrt(np.array(X**2+Y**2).astype('float'))
 
         # Find each pixels neighbors further from the peak and mark them as invalid
         # (to be removed later)
@@ -549,7 +558,7 @@ def getRadialMonotonicWeights(shape, useNearest=True, minGradient=1, center=None
         inf = X == 0
         tX = X.copy()
         tX[inf] = 1
-        angles = np.arctan2(-Y, -tX)
+        angles = np.arctan2(-Y.astype('float'), -tX.astype('float'))
         angles[inf & (Y != 0)] = 0.5*np.pi*np.sign(angles[inf & (Y != 0)])
 
         # Calcualte the angle between each pixel and it's neighbors
@@ -587,7 +596,7 @@ def getRadialMonotonicWeights(shape, useNearest=True, minGradient=1, center=None
             # Normalize the cos weights for each pixel
             normalize = np.sum(cosWeight, axis=0)
             normalize[normalize == 0] = 1
-            cosNorm = (cosWeight.T/normalize[:, None]).T
+            cosNorm = np.array((cosWeight.T/normalize[:, None]).T)
             cosNorm[mask] = 0
 
         Cache.set(name, key, cosNorm)
@@ -618,7 +627,7 @@ def getRadialMonotonicOp(shape, useNearest=True, minGradient=1, subtract=True):
         py = int(shape[0]/2)
         # Calculate the distance between each pixel and the peak
         size = shape[0]*shape[1]
-        diagonal = np.ones(size)
+        diagonal = numpy.ones(size)
         diagonal[px+py*shape[1]] = -1
         if subtract:
             monotonic = cosArr-scipy.sparse.diags(diagonal, offsets=0)

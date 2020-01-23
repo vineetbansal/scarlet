@@ -1,6 +1,6 @@
 from functools import partial
 
-import numpy as np
+from scarlet.numeric import np
 import proxmin
 
 from . import interpolation

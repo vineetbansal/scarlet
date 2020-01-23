@@ -1,4 +1,5 @@
 import torch
+from . import MyTensor
 
 
 def mul(a, b):
@@ -7,7 +8,8 @@ def mul(a, b):
     re = re1 * re2 - im1 * im2
     im = re1 * im2 + re2 * im1
     retval = torch.stack((re, im), -1)
-
+    retval = retval.as_subclass(MyTensor)
+    retval.is_real = False
     return retval
 
 
@@ -20,5 +22,6 @@ def truediv(a, b):
     t2 = im1 * re2 - re1 * im2
     numerator = torch.stack((t1, t2), -1)
     retval = numerator / denominator
-
+    retval = retval.as_subclass(MyTensor)
+    retval.is_real = False
     return retval

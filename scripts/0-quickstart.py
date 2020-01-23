@@ -1,5 +1,7 @@
 # Import Packages and setup
-import numpy as np
+from scarlet.numeric import np
+from scarlet.numeric import assert_almost_equal
+import numpy
 import scarlet
 import scarlet.display
 
@@ -15,12 +17,12 @@ import matplotlib.pyplot as plt
 matplotlib.rc('image', cmap='inferno', interpolation='none')
 
 # Load the sample images
-data = np.load("../data/hsc_cosmos_35.npz")
-images = data["images"]
+data = numpy.load("../data/hsc_cosmos_35.npz")
+images = np.array(data["images"])
 filters = data["filters"]
 catalog = data["catalog"]
-weights = 1/data["variance"]
-psfs = scarlet.PSF(data["psfs"])
+weights = np.array(1/data["variance"])
+psfs = scarlet.PSF(np.array(data["psfs"]))
 
 from scarlet.display import AsinhMapping
 
@@ -149,5 +151,5 @@ scarlet.display.show_scene(sources_,
                            show_residual=True)
 
 # minimal regression testing (hidden in sphinx)
-np.testing.assert_almost_equal(blend_.loss[-1], -31206.701431446825, decimal=3)
+assert_almost_equal(blend_.loss[-1], -31206.701431446825, decimal=3)
 

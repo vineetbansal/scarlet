@@ -124,7 +124,7 @@ def to_np(x):
 @patch
 def set_meta(self:Tensor, x):
     "Set all metadata in `__dict__`"
-    if hasattr(x,'__dict__'): self.__dict__ = x.__dict__
+    if hasattr(x, '__dict__'): self.__dict__ = x.__dict__
 
 
 @patch
@@ -136,8 +136,10 @@ def get_meta(self:Tensor, n, d=None):
 @patch
 def as_subclass(self:Tensor, typ):
     "Cast to `typ` (should be in future PyTorch version, so remove this then)"
-    res = torch.Tensor._make_subclass(typ, self)
-    return retain_meta(self, res)
+    # res = torch.Tensor._make_subclass(typ, self, self.requires_grad)
+    # return retain_meta(self, res)
+    self.__class__ = typ
+    return self
 
 
 class TensorBase(Tensor):
@@ -159,9 +161,22 @@ class TensorBase(Tensor):
     def __getitem__(self, i):
         # TODO: Why doesn't this work if i is a TensorBase object?
         if isinstance(i, TensorBase):
+            # print('debug')
             i = i.data
         res = super(Tensor, self).__getitem__(i)
-        return res.as_subclass(type(self)) if isinstance(res, Tensor) else res
+        if isinstance(res, Tensor):
+            res = res.as_subclass(type(self))
+            res.is_real = self.is_real
+            return res
+        else:
+            return res
+
+    def __setitem__(self, key, value):
+        # TODO: Why doesn't this work if key is a TensorBase object?
+        if isinstance(key, TensorBase):
+            key = key.data
+        res = super(Tensor, self).__setitem__(key, value)
+        return res
 
 
 def _patch_all():
@@ -175,8 +190,11 @@ def _patch_all():
             return retain_type(res, self)
         return _f
 
-    skips = 'as_subclass __getitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ __hash__ __init__ \
+    skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ __hash__ __init__ \
         __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
+
+    # more_skips = '__iter__ dim size __len__ set_meta __setattr__'.split()
+    # skips.extend(more_skips)
 
     t = tensor([1])
     for fn in dir(t):

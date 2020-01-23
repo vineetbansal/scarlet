@@ -1,6 +1,7 @@
 from scarlet.numeric import operator
 
 from scarlet.numeric import np
+import numpy
 from scipy import fftpack
 
 
@@ -21,10 +22,10 @@ def _centered(arr, newshape):
     fft standard order (0 frequency and position is
     in the bottom left) to 0 position in the center.
     """
-    newshape = np.asarray(newshape)
-    currshape = np.array(arr.shape)
+    newshape = numpy.asarray(newshape)
+    currshape = numpy.array(arr.shape)
 
-    if not np.all(newshape <= currshape):
+    if not numpy.all(newshape <= currshape):
         msg = "arr must be larger than newshape in both dimensions, received {0}, and {1}"
         raise ValueError(msg.format(arr.shape, newshape))
 

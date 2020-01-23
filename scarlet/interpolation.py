@@ -330,8 +330,10 @@ def mk_shifter(shape, real = False):
             freq_y = np.fft.fftfreq(shape[0])
         # Shift the signal to recenter it, negative because math is opposite from
         # pixel direction
-        shift_y = np.exp(-1j * 2 * np.pi * freq_y)
-        shift_x = np.exp(-1j * 2 * np.pi * freq_x)
+        yy = -1j * 2 * np.pi * freq_y
+        xx = -1j * 2 * np.pi * freq_x
+        shift_y = np.exp(yy)
+        shift_x = np.exp(xx)
 
         shifters = (shift_y, shift_x)
 

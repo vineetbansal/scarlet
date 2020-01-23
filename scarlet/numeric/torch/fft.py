@@ -19,7 +19,7 @@ class Module:
     @intercepted
     def irfftshift(x, axes=(-2, -1)):
         assert x.ndim in (2, 3)
-        assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
+        assert axes in ((-2, -1), (0, 1)), 'Only axes (-2, -1) supported for now.'
         has_batch_dimension = x.ndim == 3
 
         if not has_batch_dimension:
@@ -39,7 +39,8 @@ class Module:
         if x.is_real:
             warnings.warn('If calling ifftshift on real valued inputs, call irfftshift directly.')
             return Module.irfftshift(x)
-        assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
+        if tuple(axes) not in ((-2, -1), (0, 1)):
+            raise AssertionError('Only axes (-2, -1) supported for now.')
 
         has_batch_dimension = x.ndim == 4
 
@@ -80,7 +81,10 @@ class Module:
     @staticmethod
     @intercepted
     def fftshift(x, axes=(-2, -1)):
-        assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
+        if tuple(axes) != (-2, -1):
+            ndim = x.ndim if x.is_real else x.ndim - 1
+            if not (len(axes) == 2 and max(axes) == ndim-1):
+                raise AssertionError('Only axes (-2, -1) supported for now.')
         if x.is_real:
             warnings.warn('If calling fftshift on real valued inputs, call rfftshift directly.')
             return Module.rfftshift(x)
@@ -106,7 +110,9 @@ class Module:
     @staticmethod
     @intercepted
     def rfftn(x, axes=(-2, -1), onesided=True):
-        assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
+        if tuple(axes) != (-2, -1):
+            if not (len(axes) == 2 and max(axes) == x.ndim-1):
+                raise AssertionError('Only axes (-2, -1) supported for now.')
         retval = torch.rfft(x, 2, onesided=onesided)
         retval.is_real = False
         return retval
@@ -114,7 +120,10 @@ class Module:
     @staticmethod
     @intercepted
     def irfftn(x, s=None, axes=(-2, -1), onesided=True):
-        assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
+        if tuple(axes) != (-2, -1):
+            ndim = x.ndim if x.is_real else x.ndim - 1
+            if not (len(axes) == 2 and max(axes) == ndim-1):
+                raise AssertionError('Only axes (-2, -1) supported for now.')
         return torch.irfft(x, len(axes), signal_sizes=s, onesided=onesided)
 
     @staticmethod

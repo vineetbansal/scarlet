@@ -1,4 +1,4 @@
-from scarlet.numeric import np
+from scarlet.numeric import np, USE_TORCH
 import autograd.scipy as scipy
 from .bbox import Box
 
@@ -56,17 +56,40 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
         A 2D circular gaussian sampled at the coordinates `(y_i, x_j)`
         for all i and j in `shape`.
     """
-    Y = np.arange(bbox.shape[1]) + bbox.origin[1]
-    X = np.arange(bbox.shape[2]) + bbox.origin[2]
+    if USE_TORCH:
+        Y = np.arange(bbox.shape[1]) + bbox.origin[1]
+        X = np.arange(bbox.shape[2]) + bbox.origin[2]
 
-    def f(X):
-        if not integrate:
-            return np.exp(-X**2/(2*sigma**2))
-        else:
-            sqrt2 = np.sqrt(np.array(2.))
-            return np.sqrt(np.array(np.pi/2)) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
+        def f(X):
+            if not integrate:
+                return np.exp(-X ** 2 / (2 * sigma ** 2))
+            else:
+                # TODO: Temporary till we support the erf function
+                res = np.exp(-X ** 2 / (2 * sigma ** 2))
+                return res
+                sqrt2 = np.sqrt(np.array(2.))
+                return np.sqrt(np.array(np.pi / 2)) * sigma * (
+                            scipy.special.erf((0.5 - X) / (sqrt2 * sigma)) + scipy.special.erf(
+                        (2 * X + 1) / (2 * sqrt2 * sigma)))
+    else:
+        Y = np.arange(bbox.shape[1]) + bbox.origin[1]
+        X = np.arange(bbox.shape[2]) + bbox.origin[2]
 
-    return (f(Y-y)[:,None] * f(X-x)[None,:])[None,:,:]
+        def f(X):
+            if not integrate:
+                return np.exp(-X**2/(2*sigma**2))
+            else:
+                # TODO: Temporary till we support the erf function
+                # return np.exp(-X**2/(2*sigma**2))
+                sqrt2 = np.sqrt(np.array(2.))
+                return np.sqrt(np.array(np.pi/2)) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
+
+    _y = Y-y
+    _x = X-x
+    f1 = f(_y)
+    f2 = f(_x)
+    ans = (f1[:,None] * f2[None,:])[None,:,:]
+    return ans
 
 
 class PSF:
