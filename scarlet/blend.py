@@ -1,4 +1,5 @@
 import numpy.ma as ma
+import numpy, weakref
 from scarlet.numeric import np, USE_TORCH
 from autograd import grad
 import proxmin
@@ -61,44 +62,64 @@ class Blend(ComponentTree):
         X = self.parameters
         n_params = len(X)
 
+        # compute the backward gradient tree
         if USE_TORCH:
-            import torch
-            # t = []
-            # for p in X:
-            #     t.append(torch.tensor(p, requires_grad=True))
-            x = self._loss(*X)
-            x.backward()
-            gradients = []
-            for p in X:
-                g = p.grad.data
-                gradients.append(g)
-
-            # compute the backward gradient tree
-            grad_logL = grad(self._loss, tuple(range(n_params)))
-            grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
-            _grad = lambda *X: tuple(l + p for l,p in zip(gradients, grad_logP(*X)))
-            _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
-            _prox = tuple(x.constraint for x in X)
+            def grad_logL(*X):
+                loss = self._loss(*X)
+                loss.backward()
+                return [p.grad.numpy() for p in self.parameters]
         else:
-            # compute the backward gradient tree
             grad_logL = grad(self._loss, tuple(range(n_params)))
-            grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
-            _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
-            _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
-            _prox = tuple(x.constraint for x in X)
+
+        grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
+        _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
+        _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
+        _prox = tuple(x.constraint for x in X)
 
         # good defaults for adaprox
         scheme = alg_kwargs.pop('scheme', 'amsgrad')
         prox_max_iter = alg_kwargs.pop('prox_max_iter', 10)
         eps = alg_kwargs.pop('eps', 1e-8)
-        callback = partial(self._convergence_callback, f_rel=f_rel, callback=alg_kwargs.pop('callback', None))
+        # TODO: Support callback
+        # callback = partial(self._convergence_callback, f_rel=f_rel, callback=alg_kwargs.pop('callback', None))
+        callback = None
+
+        if USE_TORCH:
+            class _Param(numpy.ndarray):
+                def __new__(cls, t, prior=None, constraint=None, step=0, converged=False, std=None, fixed=False):
+                    array = t.detach().numpy()
+                    obj = numpy.asarray(array, dtype=array.dtype).view(cls)
+                    obj.tensor = weakref.ref(t)
+                    obj.prior = t.prior
+                    obj.constraint = t.constraint
+                    obj.step = t.step
+                    obj.converged = t.converged
+                    obj.std = t.std
+                    obj.fixed = t.fixed
+                    return obj
+
+                def __array_finalize__(self, obj):
+                    if obj is None: return
+                    self.prior = getattr(obj, 'prior', None)
+                    self.constraint = getattr(obj, 'constraint', None)
+                    self.step = getattr(obj, 'step_size', 0)
+                    self.converged = getattr(obj, 'converged', False)
+                    self.std = getattr(obj, 'std', None)
+                    self.fixed = getattr(obj, 'fixed', False)
+
+                @property
+                def _data(self):
+                    return self.view(numpy.ndarray)
+
+            # Convert to a subclass of ndarray that proxmin can use
+            X = [_Param(x) for x in X]
 
         converged, G, V = proxmin.adaprox(X, _grad, _step, prox=_prox, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback)
 
         # set convergence and standard deviation from optimizer
         for p,c,g,v in zip(X, converged, G, V):
             p.converged = c
-            p.std = 1/np.sqrt(ma.masked_equal(v, 0)) # this is rough estimate!
+            p.std = 1/numpy.sqrt(ma.masked_equal(v, 0)) # this is rough estimate!
 
         return self
 

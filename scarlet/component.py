@@ -149,7 +149,10 @@ class FactorizedComponent(Component):
     def sed(self):
         """Numpy view of the component SED
         """
-        return self._pad_sed(self._parameters[0]._data)
+        if USE_TORCH:
+            return self._pad_sed(self._parameters[0])
+        else:
+            return self._pad_sed(self._parameters[0]._data)
 
     @property
     def morph(self):
@@ -179,14 +182,22 @@ class FactorizedComponent(Component):
         """
         sed, morph, shift = None, None, None
 
-        if USE_TORCH:
+        if USE_TORCH:  # TODO: Added
             for p in parameters:
-                if p is self._parameters[0]:
-                    sed = p
-                if p is self._parameters[1]:
-                    morph = p
-                if len(self._parameters) == 3 and p is self._parameters[2]:
-                    shift = p
+                if hasattr(p, 'tensor'):
+                    if p.tensor() is self._parameters[0]:
+                        sed = p.tensor()
+                    if p.tensor() is self._parameters[1]:
+                        morph = p.tensor()
+                    if len(self._parameters) == 3 and p.tensor() is self._parameters[2]:
+                        shift = p.tensor()
+                else:
+                    if p is self._parameters[0]:
+                        sed = p
+                    if p is self._parameters[1]:
+                        morph = p
+                    if len(self._parameters) == 3 and p is self._parameters[2]:
+                        shift = p
         else:
             # if params are set they are not Parameters, but autograd ArrayBoxes
             # need to access the wrapped class with _value
@@ -206,7 +217,10 @@ class FactorizedComponent(Component):
 
         if morph is None:
             # dont' use self._morph because we could have shift as parameter
-            t = self._shift_morph(shift, self._parameters[1]._data)
+            if USE_TORCH:
+                t = self._shift_morph(shift, self._parameters[1])
+            else:
+                t = self._shift_morph(shift, self._parameters[1]._data)
             morph =  self._pad_morph(t)
         else:
             morph =  self._pad_morph(self._shift_morph(shift, morph))
@@ -292,12 +306,19 @@ class FunctionComponent(FactorizedComponent):
         """
         sed, fparams = None, None
 
-        if USE_TORCH:
+        if USE_TORCH:  # TODO: Added - using tensor() weakref to get a handle on the Tensor
             for p in parameters:
-                if p is self._parameters[0]:
-                    sed = p
-                if p is self._parameters[1]:
-                    fparams = p
+                if hasattr(p, 'tensor'):
+                    if p.tensor() is self._parameters[0]:
+                        sed = p.tensor()
+                    if p.tensor() is self._parameters[1]:
+                        fparams = p.tensor()
+                else:
+                    # TODO: This block is for debugging and should go away
+                    if p is self._parameters[0]:
+                        sed = p
+                    if p is self._parameters[1]:
+                        fparams = p
 
             if sed is None:
                 sed = self.sed

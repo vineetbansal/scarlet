@@ -62,6 +62,7 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
 
         def f(X):
             if not integrate:
+                # TODO: torch exp not implemented for int
                 return np.exp(-X ** 2 / (2 * sigma ** 2))
             else:
                 # TODO: Temporary till we support the erf function
@@ -80,7 +81,7 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
                 return np.exp(-X**2/(2*sigma**2))
             else:
                 # TODO: Temporary till we support the erf function
-                # return np.exp(-X**2/(2*sigma**2))
+                return np.exp(-X**2/(2*sigma**2))
                 sqrt2 = np.sqrt(np.array(2.))
                 return np.sqrt(np.array(np.pi/2)) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
 

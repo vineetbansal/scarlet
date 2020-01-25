@@ -17,7 +17,8 @@ class MyTensor(TensorBase):
                 assert dtype.startswith('torch.')
                 dtype = {'torch.float32': 'float', 'torch.float64': 'double'}[dtype]
 
-        assert dtype in ('float', 'double', 'int', 'complex')
+        if dtype not in ('float', 'double', 'int', 'complex'):
+            raise AssertionError('nooooo....')
 
         # # For non-complex types, we can simply use torch conversion facility .double(), .float() etc.
         if dtype != 'complex':

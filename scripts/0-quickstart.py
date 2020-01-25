@@ -1,4 +1,5 @@
 # Import Packages and setup
+import torch
 from scarlet.numeric import np
 from scarlet.numeric import assert_almost_equal
 import numpy
@@ -63,93 +64,97 @@ for k,src in enumerate(catalog):
 blend = scarlet.Blend(sources, observation)
 blend.fit(200)
 print("scarlet ran for {0} iterations to logL = {1}".format(len(blend.loss), -blend.loss[-1]))
-plt.plot(-np.array(blend.loss))
-plt.xlabel('Iteration')
-plt.ylabel('log-Likelihood')
 
-# Load the model and calculate the residual
-model = blend.get_model()
-model_ = observation.render(model)
-residual = images-model_
+with torch.no_grad():  # TODO: Matplotlib chokes on getting numpy() arrays from Tensors if they're being tracked
+    plt.plot(-np.array(blend.loss))
+    plt.xlabel('Iteration')
+    plt.ylabel('log-Likelihood')
 
-# Create RGB images
-model_rgb = scarlet.display.img_to_rgb(model_, norm=norm)
-residual_rgb = scarlet.display.img_to_rgb(residual)
+    # Load the model and calculate the residual
+    model = blend.get_model()
+    model_ = observation.render(model)
+    residual = images-model_
 
-# Show the data, model, and residual
-fig = plt.figure(figsize=(15,5))
-ax = [fig.add_subplot(1,3,n+1) for n in range(3)]
-ax[0].imshow(img_rgb)
-ax[0].set_title("Data")
-ax[1].imshow(model_rgb)
-ax[1].set_title("Model")
-ax[2].imshow(residual_rgb)
-ax[2].set_title("Residual")
+    # Create RGB images
+    model_rgb = scarlet.display.img_to_rgb(model_, norm=norm)
+    residual_rgb = scarlet.display.img_to_rgb(residual)
 
-for k,component in enumerate(blend):
-    y,x = component.center
-    ax[0].text(x, y, k, color="w")
-    ax[1].text(x, y, k, color="w")
-    ax[2].text(x, y, k, color="w")
-plt.show()
+    # Show the data, model, and residual
+    fig = plt.figure(figsize=(15,5))
+    ax = [fig.add_subplot(1,3,n+1) for n in range(3)]
+    ax[0].imshow(img_rgb)
+    ax[0].set_title("Data")
+    ax[1].imshow(model_rgb)
+    ax[1].set_title("Model")
+    ax[2].imshow(residual_rgb)
+    ax[2].set_title("Residual")
 
-scarlet.display.show_sources(sources,
-                             norm=norm,
-                             observation=observation,
-                             show_rendered=True,
-                             show_observed=True)
+    for k,component in enumerate(blend):
+        y,x = component.center
+        ax[0].text(x, y, k, color="w")
+        ax[1].text(x, y, k, color="w")
+        ax[2].text(x, y, k, color="w")
+    plt.show()
 
-print ("----------------- {}".format(filters))
-for k, src in enumerate(sources):
-    print ("Source {}, Fluxes: {}".format(k, scarlet.measure.flux(src)))
+    scarlet.display.show_sources(sources,
+                                 norm=norm,
+                                 observation=observation,
+                                 show_rendered=True,
+                                 show_observed=True)
 
-import pickle
-fp = open("hsc_cosmos_35.sca", "wb")
-pickle.dump(sources, fp)
-fp.close()
+    print ("----------------- {}".format(filters))
+    for k, src in enumerate(sources):
+        print ("Source {}, Fluxes: {}".format(k, scarlet.measure.flux(src)))
 
-fp = open("hsc_cosmos_35.sca", "rb")
-sources_ = pickle.load(fp)
-fp.close()
+    import pickle
+    fp = open("hsc_cosmos_35.sca", "wb")
+    pickle.dump(sources, fp)
+    fp.close()
 
-scarlet.display.show_scene(sources_, norm=norm)
+    fp = open("hsc_cosmos_35.sca", "rb")
+    sources_ = pickle.load(fp)
+    fp.close()
 
-# first freeze existing sources: they are not updated during fit
-for src in sources_:
-    src.freeze()
+    scarlet.display.show_scene(sources_, norm=norm)
 
-# add two sources at their approximate locations
-yx = (14., 44.)
-new_source = scarlet.ExtendedSource(src.frame, yx, observation, shifting=True, symmetric=False, monotonic=True, thresh=5)
-sources_.append(new_source)
-yx = (43., 12.)
-new_source = scarlet.ExtendedSource(src.frame, yx, observation, shifting=True, symmetric=False, monotonic=True, thresh=5)
-sources_.append(new_source)
+# TODO: Uncomment below to continue work
 
-# generate a new Blend instance
-blend_ = scarlet.Blend(sources_, observation)
-# fit only new sources
-blend_.fit(200)
-
-# joint fit: fit all sources
-blend_.unfreeze()
-blend_.fit(200)
-
-# show convergence of logL
-print("scarlet ran for {0} iterations to logL = {1}".format(len(blend_.loss), -blend_.loss[-1]))
-plt.plot(-np.array(blend.loss), 'k--', label='7 sources')
-plt.plot(-np.array(blend_.loss), label='7+2 sources')
-plt.xlabel('Iteration')
-plt.ylabel('log-Likelihood')
-plt.legend()
-
-scarlet.display.show_scene(sources_,
-                           norm=norm,
-                           observation=observation,
-                           show_rendered=True,
-                           show_observed=True,
-                           show_residual=True)
-
-# minimal regression testing (hidden in sphinx)
-assert_almost_equal(blend_.loss[-1], -31206.701431446825, decimal=3)
+# # first freeze existing sources: they are not updated during fit
+# for src in sources_:
+#     src.freeze()
+#
+# # add two sources at their approximate locations
+# yx = (14., 44.)
+# new_source = scarlet.ExtendedSource(src.frame, yx, observation, shifting=True, symmetric=False, monotonic=True, thresh=5)
+# sources_.append(new_source)
+# yx = (43., 12.)
+# new_source = scarlet.ExtendedSource(src.frame, yx, observation, shifting=True, symmetric=False, monotonic=True, thresh=5)
+# sources_.append(new_source)
+#
+# # generate a new Blend instance
+# blend_ = scarlet.Blend(sources_, observation)
+# # fit only new sources
+# blend_.fit(200)
+#
+# # joint fit: fit all sources
+# blend_.unfreeze()
+# blend_.fit(200)
+#
+# # show convergence of logL
+# print("scarlet ran for {0} iterations to logL = {1}".format(len(blend_.loss), -blend_.loss[-1]))
+# plt.plot(-np.array(blend.loss), 'k--', label='7 sources')
+# plt.plot(-np.array(blend_.loss), label='7+2 sources')
+# plt.xlabel('Iteration')
+# plt.ylabel('log-Likelihood')
+# plt.legend()
+#
+# scarlet.display.show_scene(sources_,
+#                            norm=norm,
+#                            observation=observation,
+#                            show_rendered=True,
+#                            show_observed=True,
+#                            show_residual=True)
+#
+# # minimal regression testing (hidden in sphinx)
+# assert_almost_equal(blend_.loss[-1], -31206.701431446825, decimal=3)
 
