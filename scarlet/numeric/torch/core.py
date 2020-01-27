@@ -104,8 +104,13 @@ def unsqueeze_(x, dim=-1, n=1):
     return x
 
 
-def _fa_rebuild_tensor (cls, *args, **kwargs): return cls(torch._utils._rebuild_tensor_v2(*args, **kwargs))
-def _fa_rebuild_qtensor(cls, *args, **kwargs): return cls(torch._utils._rebuild_qtensor  (*args, **kwargs))
+def _fa_rebuild_tensor(cls, *args, **kwargs):
+    obj = cls(torch._utils._rebuild_tensor_v2(*args[0:-1], **kwargs))
+    obj.__dict__.update(args[-1])
+    return obj
+
+def _fa_rebuild_qtensor(cls, *args, **kwargs):
+    return cls(torch._utils._rebuild_qtensor  (*args, **kwargs))
 
 
 def apply(func, x, *args, **kwargs):
@@ -151,12 +156,12 @@ class TensorBase(Tensor):
     @classmethod
     def _before_cast(cls, x): return x if isinstance(x, Tensor) else tensor(x)
 
-    def __reduce_ex__(self,proto):
+    def __reduce_ex__(self, proto):
         torch.utils.hooks.warn_if_has_hooks(self)
         args = (type(self), self.storage(), self.storage_offset(), tuple(self.size()), self.stride())
         if self.is_quantized: args = args + (self.q_scale(), self.q_zero_point())
         f = _fa_rebuild_qtensor if self.is_quantized else  _fa_rebuild_tensor
-        return (f, args + (self.requires_grad, OrderedDict()))
+        return (f, args + (self.requires_grad, OrderedDict(), self.__dict__))
 
     def __getitem__(self, i):
         # TODO: Why doesn't this work if i is a TensorBase object?

@@ -78,10 +78,12 @@ class Component(ABC):
     def freeze(self):
         for p in self._parameters:
             p.fixed = True
+            p.requires_grad = False
 
     def unfreeze(self):
         for p in self._parameters:
             p.fixed = False
+            p.requires_grad = True
 
     def set_frame(self, frame):
         self.frame = frame

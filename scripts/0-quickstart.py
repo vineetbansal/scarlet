@@ -65,60 +65,65 @@ blend = scarlet.Blend(sources, observation)
 blend.fit(200)
 print("scarlet ran for {0} iterations to logL = {1}".format(len(blend.loss), -blend.loss[-1]))
 
-with torch.no_grad():  # TODO: Matplotlib chokes on getting numpy() arrays from Tensors if they're being tracked
-    plt.plot(-np.array(blend.loss))
-    plt.xlabel('Iteration')
-    plt.ylabel('log-Likelihood')
-
-    # Load the model and calculate the residual
-    model = blend.get_model()
-    model_ = observation.render(model)
-    residual = images-model_
-
-    # Create RGB images
-    model_rgb = scarlet.display.img_to_rgb(model_, norm=norm)
-    residual_rgb = scarlet.display.img_to_rgb(residual)
-
-    # Show the data, model, and residual
-    fig = plt.figure(figsize=(15,5))
-    ax = [fig.add_subplot(1,3,n+1) for n in range(3)]
-    ax[0].imshow(img_rgb)
-    ax[0].set_title("Data")
-    ax[1].imshow(model_rgb)
-    ax[1].set_title("Model")
-    ax[2].imshow(residual_rgb)
-    ax[2].set_title("Residual")
-
-    for k,component in enumerate(blend):
-        y,x = component.center
-        ax[0].text(x, y, k, color="w")
-        ax[1].text(x, y, k, color="w")
-        ax[2].text(x, y, k, color="w")
-    plt.show()
-
-    scarlet.display.show_sources(sources,
-                                 norm=norm,
-                                 observation=observation,
-                                 show_rendered=True,
-                                 show_observed=True)
-
-    print ("----------------- {}".format(filters))
-    for k, src in enumerate(sources):
-        print ("Source {}, Fluxes: {}".format(k, scarlet.measure.flux(src)))
-
-    import pickle
-    fp = open("hsc_cosmos_35.sca", "wb")
-    pickle.dump(sources, fp)
-    fp.close()
-
-    fp = open("hsc_cosmos_35.sca", "rb")
-    sources_ = pickle.load(fp)
-    fp.close()
-
-    scarlet.display.show_scene(sources_, norm=norm)
-
-# TODO: Uncomment below to continue work
-
+# plt.plot(-np.array(blend.loss))
+# plt.xlabel('Iteration')
+# plt.ylabel('log-Likelihood')
+#
+# # Load the model and calculate the residual
+# model = blend.get_model()
+# model_ = observation.render(model)
+# residual = images-model_
+#
+# # Create RGB images
+# model_rgb = scarlet.display.img_to_rgb(model_, norm=norm)
+# residual_rgb = scarlet.display.img_to_rgb(residual)
+#
+# # Show the data, model, and residual
+# fig = plt.figure(figsize=(15,5))
+# ax = [fig.add_subplot(1,3,n+1) for n in range(3)]
+# ax[0].imshow(img_rgb)
+# ax[0].set_title("Data")
+# ax[1].imshow(model_rgb)
+# ax[1].set_title("Model")
+# ax[2].imshow(residual_rgb)
+# ax[2].set_title("Residual")
+#
+# for k,component in enumerate(blend):
+#     y,x = component.center
+#     ax[0].text(x, y, k, color="w")
+#     ax[1].text(x, y, k, color="w")
+#     ax[2].text(x, y, k, color="w")
+# plt.show()
+#
+# scarlet.display.show_sources(sources,
+#                              norm=norm,
+#                              observation=observation,
+#                              show_rendered=True,
+#                              show_observed=True)
+#
+# print ("----------------- {}".format(filters))
+# for k, src in enumerate(sources):
+#     print ("Source {}, Fluxes: {}".format(k, scarlet.measure.flux(src)))
+#
+# import pickle
+# fp = open("hsc_cosmos_35.sca", "wb")
+# pickle.dump(sources, fp)
+# fp.close()
+#
+# fp = open("hsc_cosmos_35.sca", "rb")
+# sources_ = pickle.load(fp)
+# fp.close()
+#
+# # p0 = sources[0]._parameters[0]
+# # fp = open("p0.sca", "wb")
+# # pickle.dump(p0, fp)
+# # fp.close()
+# # fp = open("p0.sca", "rb")
+# # p0_ = pickle.load(fp)
+# # fp.close()
+#
+# scarlet.display.show_scene(sources_, norm=norm)
+#
 # # first freeze existing sources: they are not updated during fit
 # for src in sources_:
 #     src.freeze()

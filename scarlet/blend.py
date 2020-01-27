@@ -65,14 +65,38 @@ class Blend(ComponentTree):
         # compute the backward gradient tree
         if USE_TORCH:
             def grad_logL(*X):
-                loss = self._loss(*X)
-                loss.backward()
+                import torch
+                with torch.enable_grad():
+                    loss = self._loss(*X)
+                    loss.backward()
                 return [p.grad.numpy() for p in self.parameters]
         else:
             grad_logL = grad(self._loss, tuple(range(n_params)))
 
         grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
-        _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
+        # _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
+
+        # TODO: Exploded form for debugging
+        def _grad(*X, it=None):
+            gs = grad_logL(*X)
+            ps = grad_logP(*X)
+            t = tuple(l + p for l, p in zip(gs, ps))
+            if it is not None:
+                import numpy
+                for i in range(len(X)):
+                    if USE_TORCH:
+                        X_np = numpy.load('it_{0}_X_{1}.npy'.format(it, i))
+                        X_torch = X[i]
+                        good1 = numpy.allclose(X_np, X_torch, atol=1e-6)
+                        # good2 = numpy.allclose(numpy.load('it_{0}_t_{1}.npy'.format(it, i)), t[i], atol=1e-5)
+                        good2 = True
+                        if not (good1 and good2):
+                            raise AssertionError('no')
+                    else:
+                        numpy.save('it_{0}_X_{1}.npy'.format(it, i), X[i])
+                        numpy.save('it_{0}_t_{1}.npy'.format(it, i), t[i])
+            return t
+
         _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
         _prox = tuple(x.constraint for x in X)
 
@@ -80,9 +104,7 @@ class Blend(ComponentTree):
         scheme = alg_kwargs.pop('scheme', 'amsgrad')
         prox_max_iter = alg_kwargs.pop('prox_max_iter', 10)
         eps = alg_kwargs.pop('eps', 1e-8)
-        # TODO: Support callback
-        # callback = partial(self._convergence_callback, f_rel=f_rel, callback=alg_kwargs.pop('callback', None))
-        callback = None
+        callback = partial(self._convergence_callback, f_rel=f_rel, callback=alg_kwargs.pop('callback', None))
 
         if USE_TORCH:
             class _Param(numpy.ndarray):

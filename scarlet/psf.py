@@ -56,34 +56,28 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
         A 2D circular gaussian sampled at the coordinates `(y_i, x_j)`
         for all i and j in `shape`.
     """
-    if USE_TORCH:
-        Y = np.arange(bbox.shape[1]) + bbox.origin[1]
-        X = np.arange(bbox.shape[2]) + bbox.origin[2]
+    erf = np.erf if USE_TORCH else scipy.special.erf
+    Y = np.arange(bbox.shape[1]) + bbox.origin[1]
+    X = np.arange(bbox.shape[2]) + bbox.origin[2]
 
-        def f(X):
-            if not integrate:
-                # TODO: torch exp not implemented for int
-                return np.exp(-X ** 2 / (2 * sigma ** 2))
-            else:
-                # TODO: Temporary till we support the erf function
-                res = np.exp(-X ** 2 / (2 * sigma ** 2))
-                return res
-                sqrt2 = np.sqrt(np.array(2.))
-                return np.sqrt(np.array(np.pi / 2)) * sigma * (
-                            scipy.special.erf((0.5 - X) / (sqrt2 * sigma)) + scipy.special.erf(
-                        (2 * X + 1) / (2 * sqrt2 * sigma)))
-    else:
-        Y = np.arange(bbox.shape[1]) + bbox.origin[1]
-        X = np.arange(bbox.shape[2]) + bbox.origin[2]
+    def erf_approx(x):
+        t = 1.0 / (1 + 0.5 * np.abs(x))
+        tau = t * np.exp(-(x ** 2) - 1.26551223 + 1.00002368 * t + 0.37409196 * t ** 2 + 0.09678418 * t ** 3 - 0.18628806 * t ** 4 + 0.27886807 * t ** 5 - 1.13520398 * t ** 6 + 1.48851587 * t ** 7 - 0.82215223 * t ** 8 + 0.17087277 * t ** 9)
+        if USE_TORCH:
+            res = (x >= 0).float() * (1 - tau) + (x < 0).float() * (tau - 1)
+        else:
+            res = (x >= 0).astype('float') * (1 - tau) + (x < 0).astype('float') * (tau - 1)
+        return res
+    erf = erf_approx
 
-        def f(X):
-            if not integrate:
-                return np.exp(-X**2/(2*sigma**2))
-            else:
-                # TODO: Temporary till we support the erf function
-                return np.exp(-X**2/(2*sigma**2))
-                sqrt2 = np.sqrt(np.array(2.))
-                return np.sqrt(np.array(np.pi/2)) * sigma * (scipy.special.erf((0.5 - X)/(sqrt2 * sigma)) + scipy.special.erf((2*X + 1)/(2*sqrt2*sigma)))
+    def f(X):
+        if not integrate:
+            return np.exp(-X ** 2 / (2 * sigma ** 2))
+        else:
+            sqrt2 = np.sqrt(np.array(2.))
+            return np.sqrt(np.array(np.pi / 2)) * sigma * (
+                        erf((0.5 - X) / (sqrt2 * sigma)) + erf(
+                    (2 * X + 1) / (2 * sqrt2 * sigma)))
 
     _y = Y-y
     _x = X-x

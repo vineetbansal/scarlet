@@ -345,7 +345,7 @@ class PointSource(FunctionComponent):
         center = Parameter(self.center, step=1e-1)
 
         # define bbox
-        pixel_center = tuple(np.round(center).astype('int'))
+        pixel_center = tuple([int(_coord) for _coord in np.round(center).astype('int')])  # TODO: tuple(<int_tensor>) gives us another tensor, not a tuple of ints
         front, back = 0, C
         bottom = pixel_center[0] - frame.psf.shape[1]//2
         top = pixel_center[0] + frame.psf.shape[1]//2
@@ -390,10 +390,10 @@ class ExtendedSource(FactorizedComponent):
         self.symmetric = symmetric
         self.monotonic = monotonic
         center = np.array(frame.get_pixel(sky_coord), dtype='float')
-        self.pixel_center = tuple(np.round(center).astype('int'))
+        self.pixel_center = tuple([int(_coord) for _coord in np.round(center).astype('int')])  # TODO: tuple(<int_tensor>) gives us another tensor, not a tuple of ints
 
         if shifting:
-            shift = Parameter(center - self.pixel_center, step=1e-1)
+            shift = Parameter(center - np.array(self.pixel_center), step=1e-1)
         else:
             shift = None
 
@@ -483,7 +483,7 @@ class MultiComponentSource(ComponentTree):
         self.monotonic = monotonic
         self.coords = sky_coord
         center = np.array(frame.get_pixel(sky_coord), dtype='float')
-        pixel_center = tuple(np.round(center).astype('int'))
+        pixel_center = tuple([int(_coord) for _coord in np.round(center).astype('int')])  # TODO: tuple(<int_tensor>) gives us another tensor, not a tuple of ints
 
         if shifting:
             shift = Parameter(center - pixel_center, step=1e-1)

@@ -3,6 +3,8 @@ import numpy as np
 import importlib
 from .core import TensorBase
 
+torch.set_grad_enabled(False)
+
 
 class MyTensor(TensorBase):
 
@@ -16,9 +18,12 @@ class MyTensor(TensorBase):
                 dtype = str(dtype)
                 assert dtype.startswith('torch.')
                 dtype = {'torch.float32': 'float', 'torch.float64': 'double'}[dtype]
+        else:
+            if dtype == 'float':
+                dtype = 'double'  # numpy 'float' is 64bit, corresponding to torch double
 
         if dtype not in ('float', 'double', 'int', 'complex'):
-            raise AssertionError('nooooo....')
+            raise AssertionError('unrecognized dtype')
 
         # # For non-complex types, we can simply use torch conversion facility .double(), .float() etc.
         if dtype != 'complex':
@@ -77,19 +82,20 @@ class MyTensor(TensorBase):
 
     def __pow__(self, power, modulo=None):
         if not self.is_real:
-            if isinstance(power, MyTensor):
-                assert power.is_real, "Can only raise to a real power"
+            if isinstance(power, torch.Tensor):
+                if isinstance(power, MyTensor):
+                    assert power.is_real, 'Can only raise to a real power'
                 if power.item() not in (0, 1):
-                    raise AssertionError('Only 0/1 power supported')
-                if power.item()==1:
+                    raise AssertionError('Only 0/1 power supported for now')
+                if power.item() == 1:
                     y = torch.stack([Module.real(self), Module.imag(self)], axis=-1)
-                elif power.item()==0:
+                elif power.item() == 0:
                     y = torch.stack([torch.ones_like(self[..., 0]), torch.zeros_like(self[..., 1])], axis=-1)
                 y = y.as_subclass(MyTensor)
                 y.is_real = False
                 return y
 
-                # TODO: Take care of the sign!
+                # TODO: Can raise to any real power, but how do we decide on the sign?
                 # re, im = Module.real(self), Module.imag(self)
                 # r = (torch.sqrt(re**2 + im**2)) ** power
                 # theta = power * torch.atan(im / re)
