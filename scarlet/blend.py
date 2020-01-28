@@ -73,28 +73,47 @@ class Blend(ComponentTree):
         else:
             grad_logL = grad(self._loss, tuple(range(n_params)))
 
-        grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
+        # grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
+        # TODO: Exploded form for debugging
+        def grad_logP(*X):
+            res = []
+            for x in X:
+                if x.prior is not None:
+                    _res = x.prior(x.view(np.ndarray))
+                else:
+                    _res = 0
+                res.append(_res)
+            return tuple(res)
+
         # _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
 
         # TODO: Exploded form for debugging
         def _grad(*X, it=None):
+
             gs = grad_logL(*X)
             ps = grad_logP(*X)
             t = tuple(l + p for l, p in zip(gs, ps))
-            if it is not None:
-                import numpy
-                for i in range(len(X)):
-                    if USE_TORCH:
-                        X_np = numpy.load('it_{0}_X_{1}.npy'.format(it, i))
-                        X_torch = X[i]
-                        good1 = numpy.allclose(X_np, X_torch, atol=1e-6)
-                        # good2 = numpy.allclose(numpy.load('it_{0}_t_{1}.npy'.format(it, i)), t[i], atol=1e-5)
-                        good2 = True
-                        if not (good1 and good2):
-                            raise AssertionError('no')
-                    else:
-                        numpy.save('it_{0}_X_{1}.npy'.format(it, i), X[i])
-                        numpy.save('it_{0}_t_{1}.npy'.format(it, i), t[i])
+
+            # if it is not None:
+            #     import numpy, os.path
+            #     for i in range(len(X)):
+            #         if USE_TORCH and os.path.exists('it_{0}_X_{1}.npy'.format(it, i)):
+            #             X_np = numpy.load('it_{0}_X_{1}.npy'.format(it, i))
+            #             X_torch = X[i]
+            #             good1 = numpy.allclose(X_np, X_torch, atol=1e-6, rtol=0)
+            #             if not good1:
+            #                 print('difference in X!')
+            #             g_np = numpy.load('it_{0}_g_{1}.npy'.format(it, i))
+            #             g_torch = gs[i]
+            #             good2 = numpy.allclose(g_np, g_torch, atol=1e-6, rtol=0)
+            #             if not good2:
+            #                 print('difference in gradients!')
+            #         else:
+            #             numpy.save('it_{0}_X_{1}.npy'.format(it, i), X[i])
+            #             numpy.save('it_{0}_t_{1}.npy'.format(it, i), t[i])
+            #             numpy.save('it_{0}_g_{1}.npy'.format(it, i), gs[i])
+            #             pass
+
             return t
 
         _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
@@ -120,15 +139,6 @@ class Blend(ComponentTree):
                     obj.fixed = t.fixed
                     return obj
 
-                def __array_finalize__(self, obj):
-                    if obj is None: return
-                    self.prior = getattr(obj, 'prior', None)
-                    self.constraint = getattr(obj, 'constraint', None)
-                    self.step = getattr(obj, 'step_size', 0)
-                    self.converged = getattr(obj, 'converged', False)
-                    self.std = getattr(obj, 'std', None)
-                    self.fixed = getattr(obj, 'fixed', False)
-
                 @property
                 def _data(self):
                     return self.view(numpy.ndarray)
@@ -136,7 +146,9 @@ class Blend(ComponentTree):
             # Convert to a subclass of ndarray that proxmin can use
             X = [_Param(x) for x in X]
 
-        converged, G, V = proxmin.adaprox(X, _grad, _step, prox=_prox, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback)
+        # converged, G, V = proxmin.adaprox(X, _grad, _step, prox=_prox, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback)
+        # TODO: Setting proxes to None to debug divergence
+        converged, G, V = proxmin.adaprox(X, _grad, _step, prox=None, max_iter=max_iter, e_rel=e_rel, scheme=scheme, prox_max_iter=prox_max_iter, callback=callback)
 
         # set convergence and standard deviation from optimizer
         for p,c,g,v in zip(X, converged, G, V):

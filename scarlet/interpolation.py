@@ -160,7 +160,7 @@ def bilinear(dx):
         window = np.arange(2)
         y = np.array([1 - dx, dx])
     else:
-        window = np.array([-1, 0])
+        window = np.array([-1, 0]).astype('int')
         y = np.array([-dx, 1 + dx])
     return y, window
 

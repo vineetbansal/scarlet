@@ -166,9 +166,9 @@ class Box:
 
         if box is None:
             if len(image.shape) == 3:
-                box = np.zeros(self.shape)
+                box = np.zeros(self.shape).astype('float')  # TODO: Explicit dtype promotion for torch
             else:
-                box = np.zeros(self.shape[1:])
+                box = np.zeros(self.shape[1:]).astype('float')  # TODO: Explicit dtype promotion for torch
         boxbox = Box.from_image(box)
 
         # imbox now in the frame of this bbox (i.e. of box)

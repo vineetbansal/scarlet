@@ -11,7 +11,9 @@ class MyTensor(TensorBase):
     is_real = True
 
     def astype(self, dtype):
-        if not isinstance(dtype, str):
+        if dtype is None:
+            return self
+        elif not isinstance(dtype, str):
             try:
                 dtype = dtype.__name__  # for numpy types
             except AttributeError:
@@ -112,6 +114,10 @@ class MyTensor(TensorBase):
         else:
             return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
 
+        @property
+        def size(self):
+            return 42
+
 # def my_tensor(*args, **kwargs):
 #     return MyTensor(*args, **kwargs)
 
@@ -132,7 +138,6 @@ def intercepted(f):
 class Module:
 
     asnumpy = staticmethod(lambda x: x.numpy())
-    asarray = staticmethod(intercepted(torch.tensor))
     ndarray = MyTensor
     pi = np.pi
     float32 = torch.float32
@@ -144,12 +149,22 @@ class Module:
 
     @staticmethod
     @intercepted
-    def array(x, dtype='double'):
+    def array(x, dtype='double', copy=True):
         if isinstance(x, list) and all(isinstance(_x, torch.Tensor) for _x in x):
+            assert copy, "Can only support this operation if making a copy"
             retval = torch.stack(x)
             retval.is_real = all(hasattr(_x, 'is_real') and _x.is_real for _x in x)
             return retval
-        return MyTensor(torch.tensor(x)).astype(dtype)
+        if copy:
+            return MyTensor(torch.tensor(x)).astype(dtype)
+        else:
+            return MyTensor(x).astype(dtype)
+
+    @staticmethod
+    def asarray(a, dtype=None):
+        # Implementation mirrors that of numpy
+        res = Module.array(a, dtype, copy=False)
+        return res
 
     @staticmethod
     @intercepted
@@ -195,7 +210,7 @@ class Module:
     def pad(arr, pad_width, mode='constant', constant_values=0):
         # padding in torch.nn.functional expects padding to be specified from last- to first-axis, as a flattened tuple
         # If a single (left_padding, right_padding) tuple was provided, duplicate it for all axes.
-        if not isinstance(pad_width[0], tuple):
+        if not isinstance(pad_width[0], (tuple, list)):
             pad_width = tuple([pad_width for i in range(arr.ndim)])
         pad_width2 = tuple(int(y) for x in pad_width[::-1] for y in x)
         return torch.nn.functional.pad(arr, pad_width2, mode=mode, value=constant_values)
@@ -315,6 +330,14 @@ class Module:
             out.append(index % dim)
             index = index // dim
         return tuple(reversed(out))
+
+    @staticmethod
+    @intercepted
+    def maximum(a, b):
+        if isinstance(b, (float, int)):
+            return torch.clamp(a, b)
+        else:
+            return torch.max(a, b)
 
     def __getattr__(self, item):
         """

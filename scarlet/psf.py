@@ -57,18 +57,18 @@ def gaussian(y, x, sigma=1, integrate=True, bbox=None):
         for all i and j in `shape`.
     """
     erf = np.erf if USE_TORCH else scipy.special.erf
-    Y = np.arange(bbox.shape[1]) + bbox.origin[1]
-    X = np.arange(bbox.shape[2]) + bbox.origin[2]
+    Y = (np.arange(bbox.shape[1]) + bbox.origin[1]).astype('float')
+    X = (np.arange(bbox.shape[2]) + bbox.origin[2]).astype('float')
 
-    def erf_approx(x):
-        t = 1.0 / (1 + 0.5 * np.abs(x))
-        tau = t * np.exp(-(x ** 2) - 1.26551223 + 1.00002368 * t + 0.37409196 * t ** 2 + 0.09678418 * t ** 3 - 0.18628806 * t ** 4 + 0.27886807 * t ** 5 - 1.13520398 * t ** 6 + 1.48851587 * t ** 7 - 0.82215223 * t ** 8 + 0.17087277 * t ** 9)
-        if USE_TORCH:
-            res = (x >= 0).float() * (1 - tau) + (x < 0).float() * (tau - 1)
-        else:
-            res = (x >= 0).astype('float') * (1 - tau) + (x < 0).astype('float') * (tau - 1)
-        return res
-    erf = erf_approx
+    # def erf_approx(x):
+    #     t = 1.0 / (1 + 0.5 * np.abs(x))
+    #     tau = t * np.exp(-(x ** 2) - 1.26551223 + 1.00002368 * t + 0.37409196 * t ** 2 + 0.09678418 * t ** 3 - 0.18628806 * t ** 4 + 0.27886807 * t ** 5 - 1.13520398 * t ** 6 + 1.48851587 * t ** 7 - 0.82215223 * t ** 8 + 0.17087277 * t ** 9)
+    #     if USE_TORCH:
+    #         res = (x >= 0).float() * (1 - tau) + (x < 0).float() * (tau - 1)
+    #     else:
+    #         res = (x >= 0).astype('float') * (1 - tau) + (x < 0).astype('float') * (tau - 1)
+    #     return res
+    # erf = erf_approx
 
     def f(X):
         if not integrate:

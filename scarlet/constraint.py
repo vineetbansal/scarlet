@@ -1,7 +1,8 @@
 from functools import partial
 
-from scarlet.numeric import np
+from scarlet.numeric import np, USE_TORCH
 import proxmin
+import numpy
 
 from . import interpolation
 from . import operator
@@ -158,12 +159,13 @@ class ThresholdConstraint(Constraint):
         _morph = morph[morph > 0]
         _bins = 50
         # Decrease the bin size for sources with a small number of pixels
-        if _morph.size < 500:
-            _bins = max(np.int(_morph.size/10), 1)
+        n_elems = _morph.numel() if USE_TORCH else _morph.size
+        if n_elems < 500:
+            _bins = max(int(n_elems/10), 1)
             if _bins == 1:
                 return 0, _bins
-        hist, bins = np.histogram(np.log10(_morph).reshape(-1), _bins)
-        cutoff = np.where(hist == 0)[0]
+        hist, bins = numpy.histogram(np.log10(_morph).reshape(-1), _bins)
+        cutoff = numpy.where(hist == 0)[0]
         # If all of the pixels are used there is no need to threshold
         if len(cutoff) == 0:
             return 0, _bins

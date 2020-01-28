@@ -39,7 +39,9 @@ if USE_TORCH:
             obj.std = std
             obj.fixed = fixed
             obj.requires_grad = not fixed  # TODO: added
-            return obj
+            # return obj
+            return MyTensor.__new__(cls, obj)
+
 
         @property
         def _data(self):

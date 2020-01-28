@@ -118,7 +118,7 @@ def build_detection_coadd(sed, bg_rms, observation):
     positive_bgrms = np.array([bg_rms[c] for c in positive])
     weights = np.array([sed[c] / bg_rms[c] ** 2 for c in positive])
     jacobian = np.array([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
-    detect = np.einsum('i,i...', weights, np.array(positive_img)) / jacobian
+    detect = np.einsum('i,i...', weights, np.array(positive_img).astype(weights.dtype)) / jacobian  # TODO: Promote dtype explicitly for torch
 
     # thresh is multiple above the rms of detect (weighted variance across channels)
     bg_cutoff = np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
@@ -186,7 +186,9 @@ def init_extended_source(sky_coord, frame, observations, obs_idx=0,
     # which observation to use for detection and morphology
     obs_ = observations[obs_idx]
     try:
-        bg_rms = np.array([ 1 / np.sqrt(w[w > 0].mean()) for w in obs_.weights])
+        # TODO: Numpy promotes this operation to float64, while torch doesn't!
+        # bg_rms = np.array([ 1 / np.sqrt(w[w > 0].mean()) for w in obs_.weights])
+        bg_rms = np.array([1 / np.sqrt(w[w > 0].mean()) for w in obs_.weights.astype('float')])
     except:
         raise AttributeError("Observation.weights missing! Please set inverse variance weights")
     morph, bg_cutoff = build_detection_coadd(seds[obs_idx], bg_rms, obs_)
@@ -244,7 +246,7 @@ def init_multicomponent_source(sky_coord, frame, observations, obs_idx=0, flux_p
     for k in range(K):
         if np.all(morphs[k] <= 0):
             msg = "Zero or negative morphology for component {} at y={}, x={}"
-            logger.warning(msg.format(k, *skycoords))
+            logger.warning(msg.format(k, *sky_coord))
         morphs[k] /= morphs[k].max()
 
     # optimal SEDs given the morphologies, assuming img only has that source

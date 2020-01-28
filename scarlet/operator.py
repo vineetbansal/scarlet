@@ -19,8 +19,11 @@ def _prox_strict_monotonic(X, step, ref_idx, dist_idx, thresh=0):
     from scarlet.numeric import USE_TORCH
     # TODO: prox functions are called both during initialization (when they might be Tensors)
     # or by proxmin (when they're ndarrays). Handle both cases.
-    if USE_TORCH and hasattr(X, 'requires_grad'):
-        operators_pybind11.prox_monotonic(X.reshape(-1).numpy(), ref_idx.numpy(), dist_idx.numpy(), thresh)
+    if USE_TORCH:
+        if hasattr(X, 'requires_grad'):
+            operators_pybind11.prox_monotonic(X.reshape(-1).numpy(), ref_idx, dist_idx, thresh)
+        else:
+            operators_pybind11.prox_monotonic(X.reshape(-1), ref_idx, dist_idx, thresh)
     else:
         operators_pybind11.prox_monotonic(X.reshape(-1), ref_idx, dist_idx, thresh)
     return X
@@ -33,8 +36,12 @@ def _prox_weighted_monotonic(X, step, weights, didx, offsets, thresh=0):
     from scarlet.numeric import USE_TORCH
     # TODO: prox functions are called both during initialization (when they might be Tensors)
     # or by proxmin (when they're ndarrays). Handle both cases.
-    if USE_TORCH and hasattr(X, 'requires_grad'):
-        operators_pybind11.prox_weighted_monotonic(X.reshape(-1).numpy(), weights.numpy(), offsets.numpy(), didx.numpy(), thresh)
+    if USE_TORCH:
+        if hasattr(X, 'requires_grad'):
+            operators_pybind11.prox_weighted_monotonic(X.reshape(-1).numpy(), weights.numpy(), offsets.numpy(), didx.numpy(), thresh)
+        else:
+            operators_pybind11.prox_weighted_monotonic(X.reshape(-1), weights.numpy(), offsets.numpy(),
+                                                       didx.numpy(), thresh)
     else:
         operators_pybind11.prox_weighted_monotonic(X.reshape(-1), weights, offsets, didx, thresh)
     return X

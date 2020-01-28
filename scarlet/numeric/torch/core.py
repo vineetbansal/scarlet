@@ -88,7 +88,7 @@ def tensor(x, *rest, **kwargs):
            else _array2tensor(x) if isinstance(x, ndarray)
            else as_tensor(x, **kwargs) if hasattr(x, '__array__') or is_iter(x)
            else _array2tensor(array(x), **kwargs))
-    if res.dtype is torch.float64: return res.float()
+    # if res.dtype is torch.float64: return res.float()
     return res
 
 
