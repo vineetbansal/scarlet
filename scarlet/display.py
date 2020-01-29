@@ -1,10 +1,10 @@
-import numpy as np
+from scarlet.numeric import np
 from astropy.visualization.lupton_rgb import LinearMapping, AsinhMapping
 import matplotlib.pyplot as plt
 from .component import ComponentTree
 
 def get_default_filter_weight(bands, channels=3):
-    filter_weights = np.zeros((channels, bands))
+    filter_weights = np.zeros((channels, bands)).astype('float')
     if bands == 1:
         filter_weights[0, 0] = filter_weights[1, 0] = filter_weights[2, 0] = 1
     elif bands == 2:
@@ -120,7 +120,7 @@ def img_to_channel(img, filter_weights=None, fill_value=0):
 
     # map bands onto RGB channels
     _, ny, nx = img_.shape
-    rgb = np.dot(filter_weights, img_.reshape(B, -1)).reshape(3, ny, nx)
+    rgb = np.matmul(filter_weights, img_.reshape(B, -1)).reshape(3, ny, nx)
 
     if hasattr(rgb, "mask"):
         rgb = rgb.filled(fill_value)
@@ -150,7 +150,7 @@ def img_to_rgb(img, filter_weights=None, fill_value=0, norm=None):
     -------
     rgb: numpy array with dimensions (3, height, width) and dtype uint8
     """
-    RGB = img_to_channel(img, filter_weights=filter_weights)
+    RGB = np.asnumpy(img_to_channel(img, filter_weights=filter_weights))
     if norm is None:
         norm = LinearMapping(image=RGB)
     rgb = norm.make_rgb_image(*RGB)

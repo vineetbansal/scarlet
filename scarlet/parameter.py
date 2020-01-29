@@ -31,7 +31,7 @@ if USE_TORCH:
             Whether parameter is held fixed (excluded) during optimization
         """
         def __new__(cls, array, prior=None, constraint=None, step=0, converged=False, std=None, fixed=False):
-            obj = array.data  # TODO: changed - access underlying Tensor object, bypassing MyTensor
+            obj = array  # TODO: changed - access underlying Tensor object, bypassing MyTensor
             obj.prior = prior
             obj.constraint = constraint
             obj.step = step

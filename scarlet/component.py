@@ -188,11 +188,11 @@ class FactorizedComponent(Component):
             for p in parameters:
                 if hasattr(p, 'tensor'):
                     if p.tensor() is self._parameters[0]:
-                        sed = p.tensor()
+                        sed = self._parameters[0]
                     if p.tensor() is self._parameters[1]:
-                        morph = p.tensor()
+                        morph = self._parameters[1]
                     if len(self._parameters) == 3 and p.tensor() is self._parameters[2]:
-                        shift = p.tensor()
+                        shift = self._parameters[2]
                 else:
                     if p is self._parameters[0]:
                         sed = p
@@ -312,9 +312,9 @@ class FunctionComponent(FactorizedComponent):
             for p in parameters:
                 if hasattr(p, 'tensor'):
                     if p.tensor() is self._parameters[0]:
-                        sed = p.tensor()
+                        sed = self._parameters[0]
                     if p.tensor() is self._parameters[1]:
-                        fparams = p.tensor()
+                        fparams = self._parameters[1]
                 else:
                     # TODO: This block is for debugging and should go away
                     if p is self._parameters[0]:

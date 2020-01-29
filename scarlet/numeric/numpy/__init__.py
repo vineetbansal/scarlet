@@ -3,7 +3,7 @@ import autograd.numpy as np
 
 class Module:
 
-    asnumpy = lambda x: x
+    asnumpy = staticmethod(lambda x: x)
 
     def __getattr__(self, item):
         """

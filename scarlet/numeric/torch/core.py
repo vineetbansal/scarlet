@@ -1,13 +1,11 @@
-import itertools
 import numpy as np
 from numpy import ndarray
-import operator
 
 import torch
 from torch import as_tensor, Tensor
 from collections import OrderedDict
 
-from fastcore.all import array, cast, defaults, is_iter, is_listy, patch, retain_meta, retain_type, Iterable, \
+from fastcore.all import array, cast, is_iter, is_listy, patch, retain_type, Iterable, \
     Generator, L
 
 
@@ -24,43 +22,6 @@ def is_iter(o):
     "Test whether `o` can be used in a `for` loop"
     #Rank 0 tensors in PyTorch are not really iterable
     return isinstance(o, (Iterable, Generator)) and getattr(o, 'ndim', 1)
-
-
-def is_coll(o):
-    "Test whether `o` is a collection (i.e. has a usable `len`)"
-    #Rank 0 tensors in PyTorch do not have working `len`
-    return hasattr(o, '__len__') and getattr(o, 'ndim', 1)
-
-
-def all_equal(a,b):
-    "Compares whether `a` and `b` are the same length and have the same contents"
-    if not is_iter(b): return False
-    return all(equals(a_,b_) for a_,b_ in itertools.zip_longest(a,b))
-
-
-def noop (x=None, *args, **kwargs):
-    "Do nothing"
-    return x
-
-
-def noops(self, x=None, *args, **kwargs):
-    "Do nothing (method)"
-    return x
-
-
-def one_is_instance(a, b, t): return isinstance(a,t) or isinstance(b,t)
-
-
-def equals(a,b):
-    "Compares `a` and `b` for equality; supports sublists, tensors and arrays too"
-    if one_is_instance(a,b,type): return a==b
-    if hasattr(a, '__array_eq__'): return a.__array_eq__(b)
-    if hasattr(b, '__array_eq__'): return b.__array_eq__(a)
-    cmp = (np.array_equal if one_is_instance(a, b, ndarray       ) else
-           operator.eq    if one_is_instance(a, b, (str,dict,set)) else
-           all_equal      if is_iter(a) or is_iter(b) else
-           operator.eq)
-    return cmp(a,b)
 
 
 class ArrayBase(ndarray):
@@ -92,18 +53,6 @@ def tensor(x, *rest, **kwargs):
     return res
 
 
-def unsqueeze(x, dim=-1, n=1):
-    "Same as `torch.unsqueeze` but can add `n` dims"
-    for _ in range(n): x = x.unsqueeze(dim)
-    return x
-
-
-def unsqueeze_(x, dim=-1, n=1):
-    "Same as `torch.unsqueeze_` but can add `n` dims"
-    for _ in range(n): x.unsqueeze_(dim)
-    return x
-
-
 def _fa_rebuild_tensor(cls, *args, **kwargs):
     obj = cls(torch._utils._rebuild_tensor_v2(*args[0:-1], **kwargs))
     obj.__dict__.update(args[-1])
@@ -119,11 +68,6 @@ def apply(func, x, *args, **kwargs):
     if isinstance(x,dict):  return {k: apply(func, v, *args, **kwargs) for k,v in x.items()}
     res = func(x, *args, **kwargs)
     return res if x is None else retain_type(res, x)
-
-
-def to_np(x):
-    "Convert a tensor to a numpy array."
-    return apply(lambda o: o.data.cpu().numpy(), x)
 
 
 @patch
@@ -198,9 +142,6 @@ def _patch_all():
     skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ __hash__ __init__ \
         __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
 
-    # more_skips = '__iter__ dim size __len__ set_meta __setattr__'.split()
-    # skips.extend(more_skips)
-
     t = tensor([1])
     for fn in dir(t):
         if fn in skips:
@@ -213,20 +154,3 @@ def _patch_all():
 
 _patch_all()
 
-
-@patch
-def tensored(self:L):
-    "`mapped(tensor)`"
-    return self.map(tensor)
-
-
-@patch
-def stack(self:L, dim=0):
-    "Same as `torch.stack`"
-    return torch.stack(list(self.tensored()), dim=dim)
-
-
-@patch
-def cat(self:L, dim=0):
-    "Same as `torch.cat`"
-    return torch.cat(list(self.tensored()), dim=dim)

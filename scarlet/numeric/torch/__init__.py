@@ -114,13 +114,6 @@ class MyTensor(TensorBase):
         else:
             return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
 
-        @property
-        def size(self):
-            return 42
-
-# def my_tensor(*args, **kwargs):
-#     return MyTensor(*args, **kwargs)
-
 
 def intercepted(f):
     def func_wrapper(*args, **kwargs):
