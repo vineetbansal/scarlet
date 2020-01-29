@@ -130,7 +130,7 @@ def intercepted(f):
 
 class Module:
 
-    asnumpy = staticmethod(lambda x: x.numpy())
+    asnumpy = staticmethod(lambda x: x.numpy() if isinstance(x, torch.Tensor) else x)
     ndarray = MyTensor
     pi = np.pi
     float32 = torch.float32
