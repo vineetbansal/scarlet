@@ -87,27 +87,16 @@ class MyTensor(TensorBase):
             if isinstance(power, torch.Tensor):
                 if isinstance(power, MyTensor):
                     assert power.is_real, 'Can only raise to a real power'
-                if power.item() not in (0, 1):
-                    raise AssertionError('Only 0/1 power supported for now')
-                if power.item() == 1:
-                    y = torch.stack([Module.real(self), Module.imag(self)], axis=-1)
-                elif power.item() == 0:
-                    y = torch.stack([torch.ones_like(self[..., 0]), torch.zeros_like(self[..., 1])], axis=-1)
+                re, im = Module.real(self), Module.imag(self)
+                r = (torch.sqrt(re**2 + im**2)) ** power
+                theta = power * torch.atan2(im, re)
+                re, im = torch.cos(theta), torch.sin(theta)
+                re = r * re
+                im = r * im
+                y = torch.stack([re, im], axis=-1)
                 y = y.as_subclass(MyTensor)
                 y.is_real = False
                 return y
-
-                # TODO: Can raise to any real power, but how do we decide on the sign?
-                # re, im = Module.real(self), Module.imag(self)
-                # r = (torch.sqrt(re**2 + im**2)) ** power
-                # theta = power * torch.atan(im / re)
-                # re, im = torch.cos(theta), torch.sin(theta)
-                # re = r * re
-                # im = r * im
-                # y = torch.stack([re, im], axis=-1)
-                # y = y.as_subclass(MyTensor)
-                # y.is_real = False
-                # return y
 
             else:
                 return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
@@ -130,8 +119,10 @@ def intercepted(f):
 
 class Module:
 
-    asnumpy = staticmethod(lambda x: x.numpy() if isinstance(x, torch.Tensor) else x)
+    asnumpy = staticmethod(lambda x: x.detach().numpy() if isinstance(x, torch.Tensor) else np.asarray(x))
     ndarray = MyTensor
+    load = staticmethod(np.load)
+    shape = staticmethod(lambda x: x.shape)
     pi = np.pi
     float32 = torch.float32
     float64 = torch.float64
@@ -336,7 +327,7 @@ class Module:
         """
         Catch-all method to to allow a straight pass-through of any attribute that is not supported above.
         """
-        if item in ('fft', 'linalg', 'random'):
+        if item in ('fft', 'linalg', 'random', 'testing'):
             module = importlib.import_module(self.__module__ + '.' + item)
             module_class = module.Module
             return module_class
@@ -346,18 +337,18 @@ class Module:
 def assert_array_equal(a, b, **kwargs):
     import numpy.testing as testing
     if isinstance(a, torch.Tensor):
-        a = a.numpy()
+        a = a.detach().numpy()
     if isinstance(b, torch.Tensor):
-        b = b.numpy()
+        b = b.detach().numpy()
     return testing.assert_array_equal(a, b, **kwargs)
 
 
 def assert_almost_equal(a, b, **kwargs):
     import numpy.testing as testing
     if isinstance(a, torch.Tensor):
-        a = a.numpy()
+        a = a.detach().numpy()
     if isinstance(b, torch.Tensor):
-        b = b.numpy()
+        b = b.detach().numpy()
 
     if 'decimal' not in kwargs:
         decimal = 5

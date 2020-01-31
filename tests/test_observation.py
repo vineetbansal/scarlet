@@ -1,5 +1,5 @@
 from scarlet.numeric import np
-from scarlet.numeric import assert_array_equal, assert_almost_equal
+from scarlet.numeric import assert_almost_equal
 from functools import partial
 import scarlet
 

@@ -186,20 +186,12 @@ class FactorizedComponent(Component):
 
         if USE_TORCH:  # TODO: Added
             for p in parameters:
-                if hasattr(p, 'tensor'):
-                    if p.tensor() is self._parameters[0]:
-                        sed = self._parameters[0]
-                    if p.tensor() is self._parameters[1]:
-                        morph = self._parameters[1]
-                    if len(self._parameters) == 3 and p.tensor() is self._parameters[2]:
-                        shift = self._parameters[2]
-                else:
-                    if p is self._parameters[0]:
-                        sed = p
-                    if p is self._parameters[1]:
-                        morph = p
-                    if len(self._parameters) == 3 and p is self._parameters[2]:
-                        shift = p
+                if p.tensor() is self._parameters[0]:
+                    sed = self._parameters[0]
+                if p.tensor() is self._parameters[1]:
+                    morph = self._parameters[1]
+                if len(self._parameters) == 3 and p.tensor() is self._parameters[2]:
+                    shift = self._parameters[2]
         else:
             # if params are set they are not Parameters, but autograd ArrayBoxes
             # need to access the wrapped class with _value
@@ -227,7 +219,10 @@ class FactorizedComponent(Component):
         else:
             morph =  self._pad_morph(self._shift_morph(shift, morph))
 
-        return sed[:, None, None] * morph[None, :, :]
+        res = sed[:, None, None] * morph[None, :, :]
+        # if shift is not None:
+        #    res = 42 * shift.sum() * res
+        return res
 
     def _pad_sed(self, sed):
         if self.bbox is not None:
@@ -310,17 +305,10 @@ class FunctionComponent(FactorizedComponent):
 
         if USE_TORCH:  # TODO: Added - using tensor() weakref to get a handle on the Tensor
             for p in parameters:
-                if hasattr(p, 'tensor'):
-                    if p.tensor() is self._parameters[0]:
-                        sed = self._parameters[0]
-                    if p.tensor() is self._parameters[1]:
-                        fparams = self._parameters[1]
-                else:
-                    # TODO: This block is for debugging and should go away
-                    if p is self._parameters[0]:
-                        sed = p
-                    if p is self._parameters[1]:
-                        fparams = p
+                if p.tensor() is self._parameters[0]:
+                    sed = self._parameters[0]
+                if p.tensor() is self._parameters[1]:
+                    fparams = self._parameters[1]
 
             if sed is None:
                 sed = self.sed

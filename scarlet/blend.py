@@ -71,15 +71,23 @@ class Blend(ComponentTree):
                         if p.grad is not None:
                             p.grad.data.zero_()
                     loss = self._loss(*X)
-                    loss.backward()
+                    loss.backward(retain_graph=True)
                     return [p.grad.numpy() for p in self.parameters]
+
+            def _wrapped_constraint(constraint, X, step):
+                # Constraints are called by proxmin on raw ndarrays;
+                # But for scarlet they might be ndarrays or Tensors, so wrap and unwrap accordingly
+                return np.asnumpy(constraint(np.asarray(X), step))
+
+            _prox = tuple(partial(_wrapped_constraint, x.constraint) if x.constraint is not None else None for x in X)
+
         else:
             grad_logL = grad(self._loss, tuple(range(n_params)))
+            _prox = tuple(x.constraint for x in X)
 
         grad_logP = lambda *X: tuple(x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X)
         _grad = lambda *X: tuple(l + p for l,p in zip(grad_logL(*X), grad_logP(*X)))
         _step = lambda *X, it: tuple(x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X)
-        _prox = tuple(x.constraint for x in X)
 
         # good defaults for adaprox
         scheme = alg_kwargs.pop('scheme', 'amsgrad')
@@ -99,6 +107,7 @@ class Blend(ComponentTree):
                     obj.converged = t.converged
                     obj.std = t.std
                     obj.fixed = t.fixed
+                    obj.constructed = True  # Callers may want to set attributes; Allow only once we're constructed.
                     return obj
 
                 def __array_finalize__(self, obj):
@@ -123,7 +132,13 @@ class Blend(ComponentTree):
         # set convergence and standard deviation from optimizer
         for p,c,g,v in zip(X, converged, G, V):
             p.converged = c
-            p.std = 1/numpy.sqrt(ma.masked_equal(v, 0)) # this is rough estimate!
+            p.std = np.array(1/numpy.sqrt(ma.masked_equal(v, 0))) # this is rough estimate!
+
+        if USE_TORCH:
+            for x in X:
+                parameter = x.tensor()
+                parameter.converged = bool(x.converged)
+                parameter.std = x.std
 
         return self
 

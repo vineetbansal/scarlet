@@ -1,4 +1,5 @@
 from scarlet.numeric import np
+import numpy
 from astropy.visualization.lupton_rgb import LinearMapping, AsinhMapping
 import matplotlib.pyplot as plt
 from .component import ComponentTree
@@ -63,7 +64,7 @@ class LinearPercentileNorm(LinearMapping):
             set to zero, above to saturated.
         """
         assert len(percentiles) == 2
-        vmin, vmax = np.percentile(img, percentiles)
+        vmin, vmax = numpy.percentile(img, percentiles)
         super().__init__(minimum=vmin, maximum=vmax)
 
 
@@ -79,7 +80,7 @@ class AsinhPercentileNorm(AsinhMapping):
             set to zero, above to saturated.
         """
         assert len(percentiles) == 2
-        vmin, vmax = np.percentile(img, percentiles)
+        vmin, vmax = numpy.percentile(img, percentiles)
         # solution for beta assumes flat spectrum at vmax
         stretch = vmax - vmin
         beta = stretch / np.sinh(1)
@@ -117,6 +118,8 @@ def img_to_channel(img, filter_weights=None, fill_value=0):
         filter_weights = get_default_filter_weight(B, C)
     else:
         assert filter_weights.shape == (3, len(img))
+    # TODO: Numpy can multiply arrays of different dtypes, but PyTorch cannot
+    filter_weights = filter_weights.astype(img_.dtype)
 
     # map bands onto RGB channels
     _, ny, nx = img_.shape
@@ -196,8 +199,8 @@ def show_scene(sources, observation=None, norm=None, filter_weights=None, show_o
     if label_sources:
         for k, src in enumerate(sources):
             if hasattr(src, 'center'):
-                center = np.array(src.center)
-                center_ = center - np.array(src.frame.origin[1:]) # observed coordinates
+                center = np.asnumpy(src.center)
+                center_ = center - np.asnumpy(src.frame.origin[1:]) # observed coordinates
             ax[0].text(*center[::-1], k, color='w')
             for panel in range(1, panels):
                 ax[panel].text(*center_[::-1], k, color='w')
@@ -218,14 +221,14 @@ def show_sources(sources, observation=None, norm=None, filter_weights=None, show
     for k,src in enumerate(sources):
 
         if hasattr(src, 'center'):
-            center = np.array(src.center)
+            center = np.asnumpy(src.center)
             # center in src bbox coordinates
             if src.bbox is not None:
-                center_ = center - np.array(src.bbox.origin[1:])
+                center_ = center - np.asnumpy(src.bbox.origin[1:])
             else:
                 center_ = center
             # center in observed coordinates
-            center__ = center - np.array(src.frame.origin[1:])
+            center__ = center - np.asnumpy(src.frame.origin[1:])
         else:
             center = None
 
