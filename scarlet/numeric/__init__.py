@@ -1,4 +1,4 @@
-USE_TORCH = False
+USE_TORCH = True
 
 if USE_TORCH:
     import numpy
