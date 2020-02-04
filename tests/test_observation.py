@@ -1,5 +1,5 @@
-import numpy as np
-from numpy.testing import assert_array_equal, assert_almost_equal
+from scarlet.numeric import np
+from scarlet.numeric import assert_almost_equal
 from functools import partial
 import scarlet
 
@@ -41,6 +41,6 @@ class TestObservation(object):
 
         # compute the expected loss
         weights = 1
-        log_norm = np.prod(images.shape) / 2 * np.log(2*np.pi) + np.sum(np.log(1 / weights)) / 2
+        log_norm = np.prod(images.shape) / 2 * np.log(np.array(2*np.pi)) + np.sum(np.log(np.array(1 / weights))) / 2
         true_loss = log_norm + np.sum(weights * (model_ - images)** 2) / 2
         assert_almost_equal(observation.get_loss(model), true_loss)

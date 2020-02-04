@@ -1,4 +1,4 @@
-import numpy as np
+from scarlet.numeric import np
 import scarlet
 
 

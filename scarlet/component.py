@@ -3,7 +3,7 @@ from .parameter import *
 from . import fft
 from . import interpolation
 from .bbox import Box
-import autograd.numpy as np
+from scarlet.numeric import np, USE_TORCH
 
 
 class Component(ABC):
@@ -178,7 +178,7 @@ class FactorizedComponent(Component):
     def sed(self):
         """Numpy view of the component SED
         """
-        return self._pad_sed(self._parameters[0]._data)
+        return self._pad_sed(self._parameters[0] if USE_TORCH else self._parameters[0]._data)
 
     @property
     def morph(self):
@@ -208,15 +208,24 @@ class FactorizedComponent(Component):
         """
         sed, morph, shift = None, None, None
 
-        # if params are set they are not Parameters, but autograd ArrayBoxes
-        # need to access the wrapped class with _value
-        for p in parameters:
-            if p._value is self._parameters[0]:
-                sed = p
-            if p._value is self._parameters[1]:
-                morph = p
-            if len(self._parameters) == 3 and p._value is self._parameters[2]:
-                shift = p
+        if USE_TORCH:
+            for p in parameters:
+                if p.tensor() is self._parameters[0]:
+                    sed = p.tensor()
+                if p.tensor() is self._parameters[1]:
+                    morph = p.tensor()
+                if len(self._parameters) == 3 and p.tensor() is self._parameters[2]:
+                    shift = p.tensor()
+        else:
+            # if params are set they are not Parameters, but autograd ArrayBoxes
+            # need to access the wrapped class with _value
+            for p in parameters:
+                if p._value is self._parameters[0]:
+                    sed = p
+                if p._value is self._parameters[1]:
+                    morph = p
+                if len(self._parameters) == 3 and p._value is self._parameters[2]:
+                    shift = p
 
         if sed is None:
             sed = self.sed
@@ -226,7 +235,7 @@ class FactorizedComponent(Component):
 
         if morph is None:
             # dont' use self._morph because we could have shift as parameter
-            morph = self._pad_morph(self._shift_morph(shift, self._parameters[1]._data))
+            morph = self._pad_morph(self._shift_morph(shift, self._parameters[1] if USE_TORCH else self._parameters[1]._data))
         else:
             morph = self._pad_morph(self._shift_morph(shift, morph))
 
@@ -255,8 +264,8 @@ class FactorizedComponent(Component):
             # Apply shift in Fourier
             result_fft = (
                 X_fft
-                * np.exp(self.shifter_y[:, None] * shift[0])
-                * np.exp(self.shifter_x[None, :] * shift[1])
+                * np.exp(np.expand_dims(self.shifter_y, 1) * shift[0])
+                * np.exp(np.expand_dims(self.shifter_x, 0) * shift[1])
             )
 
             X = fft.Fourier.from_fft(result_fft, self.fft_shape, X.shape, [0, 1])
@@ -315,13 +324,20 @@ class FunctionComponent(FactorizedComponent):
         """
         sed, fparams = None, None
 
-        # if params are set they are not Parameters, but autograd ArrayBoxes
-        # need to access the wrapped class with _value
-        for p in parameters:
-            if p._value is self._parameters[0]:
-                sed = p
-            if p._value is self._parameters[1]:
-                fparams = p
+        if USE_TORCH:
+            for p in parameters:
+                if p.tensor() is self._parameters[0]:
+                    sed = p.tensor()
+                if p.tensor() is self._parameters[1]:
+                    fparams = p.tensor()
+        else:
+            # if params are set they are not Parameters, but autograd ArrayBoxes
+            # need to access the wrapped class with _value
+            for p in parameters:
+                if p._value is self._parameters[0]:
+                    sed = p
+                if p._value is self._parameters[1]:
+                    fparams = p
 
         if sed is None:
             sed = self.sed
@@ -329,7 +345,7 @@ class FunctionComponent(FactorizedComponent):
             morph = self.morph
         else:
             morph = self._func(*fparams)
-            self._morph = morph._value
+            self._morph = morph if USE_TORCH else morph._value
             morph = self._pad_morph(morph)
 
         return sed[:, None, None] * morph[None, :, :]

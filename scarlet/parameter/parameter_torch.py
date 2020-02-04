@@ -1,12 +1,10 @@
-import autograd.numpy as np
-from autograd.numpy.numpy_boxes import ArrayBox
-from autograd.core import VSpace
-from functools import partial
-from .constraint import Constraint, ConstraintChain
-from .prior import Prior
+from scarlet.numeric import np
+from scarlet.numeric.torch import MyTensor
+from scarlet.constraint import Constraint, ConstraintChain
+from scarlet.prior import Prior
 
 
-class Parameter(np.ndarray):
+class Parameter(MyTensor):
     """Optimization parameter
 
     Parameters
@@ -52,8 +50,8 @@ class Parameter(np.ndarray):
         vhat=None,
         fixed=False,
     ):
-        obj = np.asarray(array, dtype=array.dtype).view(cls)
-        obj.name = name
+        obj = array
+        obj.name_ = name
         if prior is not None:
             assert isinstance(prior, Prior)
         obj.prior = prior
@@ -68,43 +66,12 @@ class Parameter(np.ndarray):
         obj.v = v
         obj.vhat = vhat
         obj.fixed = fixed
-        return obj
-
-    def __array_finalize__(self, obj):
-        if obj is None:
-            return
-        self.name = getattr(obj, "name", "unnamed")
-        self.prior = getattr(obj, "prior", None)
-        self.constraint = getattr(obj, "constraint", None)
-        self.step = getattr(obj, "step", 0)
-        self.std = getattr(obj, "std", None)
-        self.m = getattr(obj, "m", None)
-        self.v = getattr(obj, "v", None)
-        self.vhat = getattr(obj, "vhat", None)
-        self.fixed = getattr(obj, "fixed", False)
-
-    def __reduce__(self):
-        # Get the parent's __reduce__ tuple
-        pickled_state = super().__reduce__()
-        # Create our own tuple to pass to __setstate__, but append the __dict__ rather than individual members.
-        new_state = pickled_state[2] + (self.__dict__,)
-        # Return a tuple that replaces the parent's __setstate__ tuple with our own
-        return (pickled_state[0], pickled_state[1], new_state)
-
-    def __setstate__(self, state):
-        self.__dict__.update(state[-1])  # Update the internal dict from state
-        # Call the parent's __setstate__ with the other tuple elements.
-        super().__setstate__(state[0:-1])
+        obj.requires_grad = not fixed
+        return MyTensor.__new__(cls, obj)
 
     @property
     def _data(self):
         return self.view(np.ndarray)
-
-
-# autograd needs to consider Parameter a class that in can compute gradients for
-# in that regard, it behaves like an ordinary ndarray
-ArrayBox.register(Parameter)
-VSpace.register(Parameter, vspace_maker=VSpace.mappings[np.ndarray])
 
 
 def relative_step(X, it, factor=0.1):

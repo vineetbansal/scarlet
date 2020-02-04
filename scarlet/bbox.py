@@ -1,4 +1,4 @@
-import numpy as np
+from scarlet.numeric import np
 
 
 class Box:
@@ -137,7 +137,7 @@ class Box:
         imbox = Box.from_image(image)
 
         if sub is None:
-            sub = np.zeros(self.shape)
+            sub = np.zeros(self.shape).astype('float')
         subbox = Box.from_image(sub)
 
         # imbox now in the frame of this bbox (i.e. of box)

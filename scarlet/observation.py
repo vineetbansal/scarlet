@@ -1,4 +1,4 @@
-import autograd.numpy as np
+from scarlet.numeric import np
 
 from .frame import Frame
 from . import interpolation
@@ -169,7 +169,7 @@ class Observation:
         cuts = self.weights > 0
         log_sigma[cuts] = np.log(1/self.weights[cuts])
         log_norm = (
-            np.prod(images_.shape) / 2 * np.log(2 * np.pi)
+            np.prod(images_.shape) / 2 * np.log(np.array(2 * np.pi))
             + np.sum(log_sigma) / 2
         )
 
@@ -256,8 +256,8 @@ class LowResObservation(Observation):
 
         psf_valid = psf_lr[
             :,
-            pcoordlr_lr[0].min() : pcoordlr_lr[1].max() + 1,
-            pcoordlr_lr[1].min() : pcoordlr_lr[1].max() + 1,
+            int(pcoordlr_lr[0].min()) : int(pcoordlr_lr[1].max() + 1),
+            int(pcoordlr_lr[1].min()) : int(pcoordlr_lr[1].max() + 1),
         ]
         psf_match_lr = interpolation.sinc_interp(
             psf_valid, coordover_hr, pcoordlr_hr, angle=angle
@@ -313,12 +313,12 @@ class LowResObservation(Observation):
             the shifted and sinc convolved array in configuration space
         """
         # fft
-        axes = tuple(np.array(axes) - 1)
+        axes = tuple([ax - 1 for ax in axes])
 
-        fft_shape = np.array(self._fft_shape)[tuple([axes])]
-        imgs_fft = imgs.fft(fft_shape, np.array(axes) + 1)
+        fft_shape = tuple(self._fft_shape[ax] for ax in axes)
+        imgs_fft = imgs.fft(fft_shape, tuple(ax + 1 for ax in axes))
         transformed_shape = np.array(imgs_fft.shape[1:])
-        transformed_shape[tuple([axes])] = fft_shape
+        transformed_shape[tuple([axes])] = np.array(fft_shape)
 
         # frequency sampling
         if len(axes) == 1:
@@ -379,6 +379,9 @@ class LowResObservation(Observation):
         except AttributeError:
             self_affine = self.frame.wcs.cd
 
+        model_affine = np.array(model_affine)
+        self_affine = np.array(self_affine)
+
         model_pix = np.sqrt(
             np.abs(model_affine[0, 0])
             * np.abs(model_affine[1, 1] - model_affine[0, 1] * model_affine[1, 0])
@@ -397,9 +400,9 @@ class LowResObservation(Observation):
         model_framevector /= np.sum(model_framevector ** 2) ** 0.5
 
         # sin of the angle between datasets (normalised cross product)
-        self.sin_rot = np.cross(self_framevector, model_framevector)
+        self.sin_rot = float(np.cross(self_framevector, model_framevector))
         # cos of the angle. (normalised scalar product)
-        self.cos_rot = np.dot(self_framevector, model_framevector)
+        self.cos_rot = float(np.matmul(self_framevector, model_framevector))
         # Is the angle larger than machine precision?
 
         self.isrot = (np.abs(self.sin_rot) ** 2) > np.finfo(float).eps
@@ -458,13 +461,13 @@ class LowResObservation(Observation):
             np.zeros(model_frame.shape),
             padding=3,
             axes=[-2, -1],
-            max=True,
+            get_max=True,
         )
         self.diff_psf = fft.Fourier(fft._pad(diff_psf.image, self._fft_shape, axes=(1, 2)))
 
-        center_y = np.int(self._fft_shape[0]/2.-(self._fft_shape[0]-model_frame.Ny)/2.) - \
+        center_y = int(self._fft_shape[0]/2.-(self._fft_shape[0]-model_frame.Ny)/2.) - \
                    ((self._fft_shape[0] % 2) != 0) * ((model_frame.Ny % 2) == 0)
-        center_x = np.int(self._fft_shape[1]/2.-(self._fft_shape[1]-model_frame.Nx)/2.) - \
+        center_x = int(self._fft_shape[1]/2.-(self._fft_shape[1]-model_frame.Nx)/2.) - \
                    ((self._fft_shape[1] % 2) != 0) * ((model_frame.Nx % 2) == 0)
         if self.isrot:
 
@@ -509,7 +512,7 @@ class LowResObservation(Observation):
             self.shifts[0] -= center_y
             self.shifts[1] -= center_x
 
-            self.other_shifts = np.copy(self.shifts)
+            self.other_shifts = self.shifts.copy()
 
         # Computes the resampling/convolution matrix
         resconv_op = self.sinc_shift(self.diff_psf, self.shifts, axes)

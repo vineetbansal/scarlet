@@ -1,6 +1,7 @@
 import pytest
-import numpy as np
-from numpy.testing import assert_array_equal, assert_almost_equal
+import numpy
+from scarlet.numeric import np
+from scarlet.numeric import assert_array_equal, assert_almost_equal
 import scarlet
 
 
@@ -69,8 +70,8 @@ class TestUpdate(object):
 
     def test_threshold(self):
         # Use a random seed in the test to prevent race conditions
-        np.random.seed(0)
-        noise = np.random.rand(21, 21)*2  # noise background to eliminate
+        numpy.random.seed(0)
+        noise = np.array(numpy.random.rand(21, 21)*2)  # noise background to eliminate
         signal = np.zeros(noise.shape)
         func = scarlet.psf.gaussian
         signal[7:14, 7:14] = 10 * scarlet.PSF(func, shape=(None, 21, 21)).image[0, 7:14, 7:14]

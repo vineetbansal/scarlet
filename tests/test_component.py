@@ -1,6 +1,6 @@
 import pytest
-import numpy as np
-from numpy.testing import assert_almost_equal, assert_array_equal
+from scarlet.numeric import np
+from scarlet.numeric import assert_array_equal, assert_almost_equal
 
 import scarlet
 
@@ -22,8 +22,8 @@ class TestCubeComponent:
         model = component.get_model()
 
         # everything zero except at one location?
-        test_loc = tuple(np.array(on_location) + np.array(origin))
-        mask = np.zeros(model.shape, dtype='bool')
+        test_loc = tuple(int(x) for x in (np.array(on_location) + np.array(origin)))
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_array_equal(model[~mask], 0)
         assert model[test_loc] == 1
@@ -51,8 +51,8 @@ class TestFactorizedComponent:
         model = component.get_model()
 
         # everything zero except at one location?
-        test_loc = tuple(np.array(on_location) + np.array(origin))
-        mask = np.zeros(model.shape, dtype='bool')
+        test_loc = tuple(int(x) for x in (np.array(on_location) + np.array(origin)))
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_array_equal(model[~mask], 0)
         assert model[test_loc] == 1
@@ -64,8 +64,8 @@ class TestFactorizedComponent:
         model = component.get_model()
 
         # everything zero except at one location?
-        test_loc = tuple(np.array(on_location) + np.array(origin) + np.array(shift_loc))
-        mask = np.zeros(model.shape, dtype='bool')
+        test_loc = tuple(int(x) for x in (np.array(on_location) + np.array(origin) + np.array(shift_loc)))
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_almost_equal(model[~mask], 0)
         assert_almost_equal(model[test_loc],1)
@@ -84,7 +84,7 @@ class TestFunctionComponent:
         fparams = np.array(on_location[1:])
         def f(*params):
             morph = np.zeros(shape[1:])
-            morph[tuple(params)] = 1
+            morph[tuple(int(x) for x in params)] = 1
             return morph
 
         sed = scarlet.Parameter(sed)
@@ -96,8 +96,8 @@ class TestFunctionComponent:
         model = component.get_model()
 
         # everything zero except at one location?
-        test_loc = tuple(np.array(on_location) + np.array(origin))
-        mask = np.zeros(model.shape, dtype='bool')
+        test_loc = tuple(int(x) for x in (np.array(on_location) + np.array(origin)))
+        mask = np.zeros(model.shape, dtype=np.bool)
         mask[test_loc] = True
         assert_array_equal(model[~mask], 0)
         assert model[test_loc] == 1
@@ -134,8 +134,11 @@ class TestComponentTree:
         model = tree.get_model()
 
         # everything zero except at one location?
-        test_locs = [tuple(np.array(on_location) + np.array(origin1)), tuple(np.array(on_location) + np.array(origin2))]
-        mask = np.zeros(model.shape, dtype='bool')
+        test_locs = [
+            tuple(int(x) for x in (np.array(on_location) + np.array(origin1))),
+            tuple(int(x) for x in (np.array(on_location) + np.array(origin2)))
+        ]
+        mask = np.zeros(model.shape, dtype=np.bool)
         for test_loc in test_locs:
             mask[test_loc] = True
         assert_array_equal(model[~mask], 0)

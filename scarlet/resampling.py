@@ -1,4 +1,5 @@
 import numpy as np
+from scarlet.numeric import np as scarlet_np
 
 
 def match_patches(shape_hr, shape_lr, wcs_hr, wcs_lr, isrot = True, coverage  = 'intersection'):
@@ -124,4 +125,4 @@ def match_patches(shape_hr, shape_lr, wcs_hr, wcs_lr, isrot = True, coverage  = 
         # Coordinates of low resolution pixels at high resolution:
         coordlr_hr = (Y_hr, X_hr)
 
-    return coordlr_lr, coordlr_hr, coordhr_hr
+    return scarlet_np.array(coordlr_lr), scarlet_np.array(coordlr_hr), scarlet_np.array(coordhr_hr)

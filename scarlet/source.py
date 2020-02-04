@@ -4,7 +4,7 @@ from .bbox import *
 from . import operator
 
 # make sure that import * above doesn't import its own stock numpy
-import autograd.numpy as np
+from scarlet.numeric import np
 
 import logging
 
@@ -86,7 +86,7 @@ def get_best_fit_seds(morphs, frame, images):
     K = len(morphs)
     _morph = morphs.reshape(K, -1)
     data = images.reshape(images.shape[0], -1)
-    seds = np.dot(np.linalg.inv(np.dot(_morph, _morph.T)), np.dot(_morph, data.T))
+    seds = np.matmul(np.linalg.inv(np.matmul(_morph, _morph.T)), np.matmul(_morph, data.T))
     return seds
 
 
@@ -118,7 +118,7 @@ def build_detection_coadd(sed, bg_rms, observation):
     positive_bgrms = np.array([bg_rms[c] for c in positive])
     weights = np.array([sed[c] / bg_rms[c] ** 2 for c in positive])
     jacobian = np.array([sed[c] ** 2 / bg_rms[c] ** 2 for c in positive]).sum()
-    detect = np.einsum("i,i...", weights, positive_img) / jacobian
+    detect = np.einsum("i,i...", weights, np.array(positive_img).astype(weights.dtype)) / jacobian
 
     # thresh is multiple above the rms of detect (weighted variance across channels)
     bg_cutoff = np.sqrt((weights ** 2 * positive_bgrms ** 2).sum()) / jacobian
@@ -134,7 +134,7 @@ def trim_morphology(sky_coord, frame, morph, bg_cutoff, thresh):
         morph[~mask] = 0
 
         # normalize to unity at peak pixel
-        center_morph = morph[pixel_center[0], pixel_center[1]]
+        center_morph = (morph[pixel_center[0], pixel_center[1]]).copy()
         morph /= center_morph
 
         # find fitting bbox
@@ -193,7 +193,7 @@ def init_extended_source(
     # which observation to use for detection and morphology
     obs_ = observations[obs_idx]
     try:
-        bg_rms = np.array([1 / np.sqrt(w[w > 0].mean()) for w in obs_.weights])
+        bg_rms = np.array([1 / np.sqrt(w[w > 0].mean()) for w in obs_.weights.astype('float')])
     except:
         raise AttributeError(
             "Observation.weights missing! Please set inverse variance weights"
@@ -257,7 +257,7 @@ def init_multicomponent_source(
     morphs = np.zeros((K, Ny, Nx), dtype=morph.dtype)
     morphs[0, :, :] = morph[:, :]
     max_flux = morph.max()
-    percentiles_ = np.sort(flux_percentiles)
+    percentiles_ = np.sort(np.array(flux_percentiles, dtype='float'))
     last_thresh = 0
     for k in range(1, K):
         perc = percentiles_[k - 1]
@@ -382,7 +382,7 @@ class PointSource(FunctionComponent):
         center = Parameter(self.center, name="center", step=1e-1)
 
         # define bbox
-        pixel_center = tuple(np.round(center).astype("int"))
+        pixel_center = tuple([int(_coord) for _coord in np.round(center).astype("int")])
         front, back = 0, C
         bottom = pixel_center[0] - frame.psf.shape[1] // 2
         top = pixel_center[0] + frame.psf.shape[1] // 2
@@ -435,10 +435,10 @@ class ExtendedSource(FactorizedComponent):
         self.symmetric = symmetric
         self.monotonic = monotonic
         center = np.array(frame.get_pixel(sky_coord), dtype="float")
-        self.pixel_center = tuple(np.round(center).astype("int"))
+        self.pixel_center = tuple([int(_coord) for _coord in np.round(center).astype("int")])
 
         if shifting:
-            shift = Parameter(center - self.pixel_center, name="shift", step=1e-1)
+            shift = Parameter(center - np.array(self.pixel_center), name="shift", step=1e-1)
         else:
             shift = None
 
@@ -548,7 +548,7 @@ class MultiComponentSource(ComponentTree):
         self.monotonic = monotonic
         self.coords = sky_coord
         center = np.array(frame.get_pixel(sky_coord), dtype="float")
-        pixel_center = tuple(np.round(center).astype("int"))
+        pixel_center = tuple([int(_coord) for _coord in np.round(center).astype("int")])
 
         if shifting:
             shift = Parameter(center - pixel_center, name="shift", step=1e-1)

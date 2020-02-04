@@ -1,4 +1,4 @@
-import numpy as np
+from scarlet.numeric import np
 from .cache import Cache
 from . import fft
 
@@ -161,7 +161,7 @@ def bilinear(dx):
         window = np.arange(2)
         y = np.array([1 - dx, dx])
     else:
-        window = np.array([-1, 0])
+        window = np.array([-1, 0]).astype('int')
         y = np.array([-dx, 1 + dx])
     return y, window
 
@@ -361,8 +361,8 @@ def sinc_interp(images, coord_hr, coord_lr, angle=None, padding=3):
     -------
         result:  interpolated  samples at positions coord_hr
     """
-    y_hr, x_hr = coord_hr
-    y_lr, x_lr = coord_lr
+    y_hr, x_hr = coord_hr.astype(images.dtype)
+    y_lr, x_lr = coord_lr.astype(images.dtype)
     hy = np.abs(y_lr[1] - y_lr[0])
     hx = np.abs(x_lr[1] - x_lr[0])
 
@@ -371,8 +371,8 @@ def sinc_interp(images, coord_hr, coord_lr, angle=None, padding=3):
 
     if angle is None:
         result = [
-            np.dot(
-                np.dot(
+            np.matmul(
+                np.matmul(
                     np.sinc((y_lr[np.newaxis, :] - y_hr[:, np.newaxis]) / hy), image.T
                 ),
                 np.sinc((x_lr[:, np.newaxis] - x_hr[np.newaxis, :]) / hx),

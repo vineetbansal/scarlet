@@ -1,8 +1,10 @@
+import numpy
 import numpy.ma as ma
-import autograd.numpy as np
+from scarlet.numeric import np, USE_TORCH
 from autograd import grad
 import proxmin
 from functools import partial
+import weakref
 
 from .component import ComponentTree
 
@@ -59,7 +61,28 @@ class Blend(ComponentTree):
         n_params = len(X)
 
         # compute the backward gradient tree
-        grad_logL = grad(self._loss, tuple(range(n_params)))
+        if USE_TORCH:
+            def grad_logL(*X):
+                import torch
+                with torch.enable_grad():
+                    for p in self.parameters:
+                        if p.grad is not None:
+                            p.grad.data.zero_()
+                    loss = self._loss(*X)
+                    loss.backward(retain_graph=True)
+                    return [p.grad.numpy() for p in self.parameters]
+
+            def _wrapped_constraint(constraint, X, step):
+                # Constraints are called by proxmin on raw ndarrays;
+                # But for scarlet they might be ndarrays or Tensors, so wrap and unwrap accordingly
+                return np.asnumpy(constraint(np.asarray(X), step))
+
+            _prox = tuple(partial(_wrapped_constraint, x.constraint) if x.constraint is not None else None for x in X)
+
+        else:
+            grad_logL = grad(self._loss, tuple(range(n_params)))
+            _prox = tuple(x.constraint for x in X)
+
         grad_logP = lambda *X: tuple(
             x.prior(x.view(np.ndarray)) if x.prior is not None else 0 for x in X
         )
@@ -67,7 +90,6 @@ class Blend(ComponentTree):
         _step = lambda *X, it: tuple(
             x.step(x, it=it) if hasattr(x.step, "__call__") else x.step for x in X
         )
-        _prox = tuple(x.constraint for x in X)
 
         # good defaults for adaprox
         scheme = alg_kwargs.pop("scheme", "amsgrad")
@@ -78,9 +100,46 @@ class Blend(ComponentTree):
         )
 
         # do we have a current state of the optimizer to warm start?
-        M = tuple(x.m if x.m is not None else np.zeros(x.shape) for x in X)
-        V = tuple(x.v if x.v is not None else np.zeros(x.shape) for x in X)
-        Vhat = tuple(x.vhat if x.vhat is not None else np.zeros(x.shape) for x in X)
+        M = tuple(x.m if x.m is not None else numpy.zeros(x.shape) for x in X)
+        V = tuple(x.v if x.v is not None else numpy.zeros(x.shape) for x in X)
+        Vhat = tuple(x.vhat if x.vhat is not None else numpy.zeros(x.shape) for x in X)
+
+        if USE_TORCH:
+            class _Param(numpy.ndarray):
+                def __new__(cls, t, prior=None, constraint=None, step=0, converged=False, std=None, fixed=False):
+                    array = t.detach().numpy()
+                    obj = numpy.asarray(array, dtype=array.dtype).view(cls)
+                    obj.tensor = weakref.ref(t)
+                    obj.name = t.name_
+                    obj.prior = t.prior
+                    obj.constraint = t.constraint
+                    obj.step = t.step
+                    obj.std = t.std
+                    obj.m = t.m
+                    obj.v = t.v
+                    obj.vhat = t.vhat
+                    obj.fixed = t.fixed
+                    return obj
+
+                def __array_finalize__(self, obj):
+                    if obj is None: return
+                    self.tensor = getattr(obj, 'tensor', None)
+                    self.name = getattr(obj, "name", "unnamed")
+                    self.prior = getattr(obj, "prior", None)
+                    self.constraint = getattr(obj, "constraint", None)
+                    self.step = getattr(obj, "step", 0)
+                    self.std = getattr(obj, "std", None)
+                    self.m = getattr(obj, "m", None)
+                    self.v = getattr(obj, "v", None)
+                    self.vhat = getattr(obj, "vhat", None)
+                    self.fixed = getattr(obj, "fixed", False)
+
+                @property
+                def _data(self):
+                    return self.view(numpy.ndarray)
+
+            # Convert to a subclass of ndarray that proxmin can use
+            X = [_Param(x) for x in X]
 
         proxmin.adaprox(
             X,
@@ -101,10 +160,12 @@ class Blend(ComponentTree):
 
         # set convergence and standard deviation from optimizer
         for p, m, v, vhat in zip(X, M, V, Vhat):
+            if USE_TORCH:
+                p = p.tensor()
             p.m = m
             p.v = v
             p.vhat = vhat
-            p.std = 1 / np.sqrt(ma.masked_equal(v, 0))  # this is rough estimate!
+            p.std = np.array(1 / numpy.sqrt(ma.masked_equal(v, 0)))  # this is rough estimate!
 
         return self
 
@@ -121,7 +182,7 @@ class Blend(ComponentTree):
         total_loss = 0
         for observation in self.observations:
             total_loss = total_loss + observation.get_loss(model)
-        self.loss.append(total_loss._value)
+        self.loss.append(total_loss if USE_TORCH else total_loss._value)
         return total_loss
 
     def _callback(self, *parameters, it=None, e_rel=1e-3, callback=None):

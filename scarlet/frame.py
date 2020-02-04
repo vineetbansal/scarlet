@@ -1,4 +1,4 @@
-import numpy as np
+from scarlet.numeric import np
 from .psf import PSF
 from .bbox import Box
 

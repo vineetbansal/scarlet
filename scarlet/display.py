@@ -1,4 +1,5 @@
-import numpy as np
+from scarlet.numeric import np
+import numpy
 from astropy.visualization.lupton_rgb import LinearMapping, AsinhMapping
 import matplotlib.pyplot as plt
 from .component import ComponentTree
@@ -22,7 +23,7 @@ def channels_to_rgb(channels):
         0, 7
     ), "No mapping has been implemented for more than {} channels".format(channels)
 
-    channel_map = np.zeros((3, channels))
+    channel_map = np.zeros((3, channels)).astype('float')
     if channels == 1:
         channel_map[0, 0] = channel_map[1, 0] = channel_map[2, 0] = 1
     elif channels == 2:
@@ -79,7 +80,7 @@ class LinearPercentileNorm(LinearMapping):
             set to zero, above to saturated.
         """
         assert len(percentiles) == 2
-        vmin, vmax = np.percentile(img, percentiles)
+        vmin, vmax = numpy.percentile(img, percentiles)
         super().__init__(minimum=vmin, maximum=vmax)
 
 
@@ -95,7 +96,7 @@ class AsinhPercentileNorm(AsinhMapping):
             set to zero, above to saturated.
         """
         assert len(percentiles) == 2
-        vmin, vmax = np.percentile(img, percentiles)
+        vmin, vmax = numpy.percentile(img, percentiles)
         # solution for beta assumes flat spectrum at vmax
         stretch = vmax - vmin
         beta = stretch / np.sinh(1)
@@ -130,10 +131,11 @@ def img_to_3channel(img, channel_map=None, fill_value=0):
         channel_map = channels_to_rgb(C)
     else:
         assert channel_map.shape == (3, len(img))
+    channel_map = channel_map.astype(img_.dtype)
 
     # map channels onto RGB channels
     _, ny, nx = img_.shape
-    rgb = np.dot(channel_map, img_.reshape(C, -1)).reshape(3, ny, nx)
+    rgb = np.matmul(channel_map, img_.reshape(C, -1)).reshape(3, ny, nx)
 
     if hasattr(rgb, "mask"):
         rgb = rgb.filled(fill_value)
@@ -163,7 +165,7 @@ def img_to_rgb(img, channel_map=None, fill_value=0, norm=None, mask=None):
     -------
     rgb: numpy array with dimensions (3, height, width) and dtype uint8
     """
-    RGB = img_to_3channel(img, channel_map=channel_map)
+    RGB = np.asnumpy(img_to_3channel(img, channel_map=channel_map))
     if norm is None:
         norm = LinearMapping(image=RGB)
     rgb = norm.make_rgb_image(*RGB)
@@ -256,8 +258,8 @@ def show_scene(
     if label_sources:
         for k, src in enumerate(sources):
             if hasattr(src, "center"):
-                center = np.array(src.center)
-                center_ = center - np.array(
+                center = np.asnumpy(src.center)
+                center_ = center - np.asnumpy(
                     src.frame.origin[1:]
                 )  # observed coordinates
             ax[0].text(*center[::-1], k, color="w")
@@ -311,14 +313,14 @@ def show_sources(
     for k, src in enumerate(sources):
 
         if hasattr(src, "center"):
-            center = np.array(src.center)
+            center = np.asnumpy(src.center)
             # center in src bbox coordinates
             if src.bbox is not None:
-                center_ = center - np.array(src.bbox.origin[1:])
+                center_ = center - np.asnumpy(src.bbox.origin[1:])
             else:
                 center_ = center
             # center in observed coordinates
-            center__ = center - np.array(src.frame.origin[1:])
+            center__ = center - np.asnumpy(src.frame.origin[1:])
         else:
             center = None
 

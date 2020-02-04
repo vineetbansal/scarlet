@@ -1,6 +1,7 @@
-import operator
+from scarlet.numeric import operator
 
-import autograd.numpy as np
+from scarlet.numeric import np
+import numpy
 from scipy import fftpack
 
 
@@ -21,10 +22,10 @@ def _centered(arr, newshape):
     fft standard order (0 frequency and position is
     in the bottom left) to 0 position in the center.
     """
-    newshape = np.asarray(newshape)
-    currshape = np.array(arr.shape)
+    newshape = numpy.asarray(newshape)
+    currshape = numpy.array(arr.shape)
 
-    if not np.all(newshape <= currshape):
+    if not numpy.all(newshape <= currshape):
         msg = (
             "arr must be larger than newshape in both dimensions, received {0}, and {1}"
         )
@@ -67,7 +68,7 @@ def _pad(arr, newshape, axes=None):
     return np.pad(arr, pad_width, mode="constant")
 
 
-def _get_fft_shape(img1, img2, padding=3, axes=None, max=False):
+def _get_fft_shape(img1, img2, padding=3, axes=None, get_max=False):
     """Return the fast fft shapes for each spatial axis
 
     Calculate the fast fft shape for each dimension in
@@ -83,20 +84,20 @@ def _get_fft_shape(img1, img2, padding=3, axes=None, max=False):
         raise ValueError(msg.format(len(shape1), len(shape2)))
     # Set the combined shape based on the total dimensions
     if axes is None:
-        if max:
+        if get_max:
             shape = np.max([shape1, shape2], axis=1)
         else:
             shape = shape1 + shape2
     else:
-        shape = np.zeros(len(axes), dtype='int')
+        shape = np.zeros(len(axes)).astype('int')
         try:
             len(axes)
         except TypeError:
             axes = [axes]
         for n, ax in enumerate(axes):
             shape[n] = shape1[ax] + shape2[ax]
-            if max == True:
-                shape[n] = np.max([shape1[ax], shape2[ax]])
+            if get_max == True:
+                shape[n] = int(max([shape1[ax], shape2[ax]]))
 
     shape += padding
     # Use the next fastest shape in each dimension
