@@ -163,7 +163,7 @@ class Module:
     @staticmethod
     @intercepted
     def concatenate(x):
-        retval = torch.stack(x)
+        retval = torch.cat(x)
         return retval
 
     @staticmethod

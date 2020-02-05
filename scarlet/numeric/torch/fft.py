@@ -9,6 +9,7 @@ class Module:
 
     @staticmethod
     def roll_n(X, axis, n):
+        axis = axis % X.ndim  # If a negative index was provided, convert to positive
         f_idx = tuple(slice(None, None, None) if i != axis else slice(0, n, None) for i in range(X.ndim))
         b_idx = tuple(slice(None, None, None) if i != axis else slice(n, None, None) for i in range(X.ndim))
         front = X[f_idx]
@@ -18,28 +19,9 @@ class Module:
     @staticmethod
     @intercepted
     def irfftshift(x, axes=(-2, -1)):
-        assert x.ndim in (2, 3)
-        # assert axes in ((-2, -1), (0, 1)), 'Only axes (-2, -1) supported for now.'
-        has_batch_dimension = x.ndim == 3
-
-        if not has_batch_dimension:
-            assert axes in ((-2, -1), (0, 1)), 'Only axes (-2, -1) supported for now.'
-            x = x[None, ...]
-            roll_dims = list(range(x.ndim - 1, 0, -1))
-        else:
-            if axes == (1,):
-                roll_dims = [1]
-            else:
-                assert axes in ((-2, -1), (1, 2)), 'Only axes (-2, -1) supported for now.'
-                roll_dims = list(range(x.ndim - 1, 0, -1))
-
-        for dim in roll_dims:
-            x = Module.roll_n(x, axis=dim, n=x.shape[dim] // 2)
-
-        if has_batch_dimension:
-            return x
-        else:
-            return x.squeeze(dim=0)
+        for ax in axes:
+            x = Module.roll_n(x, axis=ax, n=x.shape[ax] // 2)
+        return x
 
     @staticmethod
     @intercepted
@@ -68,23 +50,13 @@ class Module:
 
     @staticmethod
     @intercepted
-    def rfftshift(x):
-        assert x.ndim in (2, 3)
-        has_batch_dimension = x.ndim == 3
-
-        if not has_batch_dimension:
-            x = x[None, ...]
-
-        for dim in range(1, len(x.size())):
-            n_shift = x.size(dim) // 2
-            if x.size(dim) % 2 != 0:
+    def rfftshift(x, axes=(-2, -1)):
+        for ax in axes:
+            n_shift = x.size(ax) // 2
+            if x.size(ax) % 2 != 0:
                 n_shift += 1
-            x = Module.roll_n(x, axis=dim, n=n_shift)
-
-        if has_batch_dimension:
-            return x
-        else:
-            return x.squeeze(dim=0)
+            x = Module.roll_n(x, axis=ax, n=n_shift)
+        return x
 
     @staticmethod
     @intercepted
@@ -95,7 +67,7 @@ class Module:
         #         raise AssertionError('Only axes (-2, -1) supported for now.')
         if x.is_real:
             warnings.warn('If calling fftshift on real valued inputs, call rfftshift directly.')
-            return Module.rfftshift(x)
+            return Module.rfftshift(x, axes=axes)
         has_batch_dimension = x.ndim == 4
 
         if not has_batch_dimension:
@@ -120,7 +92,7 @@ class Module:
     def rfftn(x, axes=(-2, -1), onesided=True):
         # UGLY!!: Some code path is doing an rfft on a middle axis, which torch doesn't support!
         if tuple(axes) == (1,) and x.ndim == 3:
-            retval = torch.rfft(x.permute(0, 2, 1), 1, onesided=True).permute(0, 2, 1, 3)
+            retval = torch.rfft(x.permute(0, 2, 1), 1, onesided=onesided).permute(0, 2, 1, 3)
             retval.is_real = False
             return retval
 
@@ -134,10 +106,13 @@ class Module:
     @staticmethod
     @intercepted
     def irfftn(x, s=None, axes=(-2, -1), onesided=True):
-        if tuple(axes) != (-2, -1):
-            ndim = x.ndim if x.is_real else x.ndim - 1
-            if not (len(axes) == 2 and max(axes) == ndim-1):
-                raise AssertionError('Only axes (-2, -1) supported for now.')
+        assert not x.is_real, "x needs to be a complex array"
+
+        # UGLY!!: Some code path is doing an irfftn on a middle axis, which torch doesn't support!
+        if tuple(axes) == (2,) and x.ndim == 5:
+            retval = torch.irfft(x.permute(0, 1, 3, 2, 4), len(axes), signal_sizes=s, onesided=onesided).permute(0, 1, 3, 2)
+            retval.is_real = True
+            return retval
         return torch.irfft(x, len(axes), signal_sizes=s, onesided=onesided)
 
     @staticmethod

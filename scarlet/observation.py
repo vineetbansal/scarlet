@@ -1,4 +1,4 @@
-from scarlet.numeric import np
+from scarlet.numeric import np, USE_TORCH
 
 from .frame import Frame
 from . import interpolation
@@ -338,18 +338,23 @@ class LowResObservation(Observation):
                 shishift = np.exp(shifter[1][np.newaxis, :] * shifts[1][:,np.newaxis])
                 imgs_shiftfft = imgs_shiftfft * shishift[np.newaxis, :, np.newaxis, :]
                 fft_axes = np.array(axes)+len(imgs_shiftfft.shape)-2
-            inv_shape = tuple(imgs_shiftfft.shape[:2]) + tuple(transformed_shape)
+            inv_shape = tuple(imgs_shiftfft.shape[:2]) + tuple(int(s) for s in transformed_shape)
 
 
         elif 1 in axes:
             # Fourier shift
             shishift = np.exp(shifter[1][:, np.newaxis] * shifts[1][np.newaxis, :])
             imgs_shiftfft = imgs_fft[:, :, :, np.newaxis] * shishift[np.newaxis, np.newaxis, :, :]
-            inv_shape = tuple([imgs_shiftfft.shape[0]]) + tuple(transformed_shape) + tuple([imgs_shiftfft.shape[-1]])
+            inv_shape = tuple([imgs_shiftfft.shape[0]]) + tuple(int(s) for s in transformed_shape) + tuple([imgs_shiftfft.shape[-1]])
             fft_axes = [len(imgs_shiftfft.shape)-2]
 
         # Inverse Fourier transform.
         # The n-dimensional transform could pose problem for very large images
+        # UGLY: We made a decision on fft_axes/inv_shape by inspecting the shape of imgs_shiftfft
+        # which is screwing us up for Tensors. Perhaps another way of doing this?
+        if USE_TORCH:
+            fft_axes = [ax-1 for ax in fft_axes]
+            inv_shape = inv_shape[:-1]
         op = fft.Fourier.from_fft(imgs_shiftfft, fft_shape, inv_shape, fft_axes).image
         return op
 
