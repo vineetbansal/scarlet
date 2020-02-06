@@ -1,4 +1,4 @@
-from scarlet.numeric import np, USE_TORCH
+from scarlet.numeric import np
 
 from .frame import Frame
 from . import interpolation
@@ -317,7 +317,7 @@ class LowResObservation(Observation):
 
         fft_shape = tuple(self._fft_shape[ax] for ax in axes)
         imgs_fft = imgs.fft(fft_shape, tuple(ax + 1 for ax in axes))
-        transformed_shape = np.array(imgs_fft.shape[1:])
+        transformed_shape = np.array(np.shape(imgs_fft)[1:])
         transformed_shape[tuple([axes])] = np.array(fft_shape)
 
         # frequency sampling
@@ -331,30 +331,25 @@ class LowResObservation(Observation):
             # Fourier shift
             shishift = np.exp(shifter[0][np.newaxis, :] * shifts[0][:, np.newaxis])
             imgs_shiftfft = imgs_fft[:, np.newaxis, :, :] * shishift[np.newaxis, :, :, np.newaxis]
-            fft_axes = [len(imgs_shiftfft.shape) - 2]
+            fft_axes = [np.ndim(imgs_shiftfft) - 2]
             # Shift along the x-axis
             if 1 in axes:
                 # Fourier shift
                 shishift = np.exp(shifter[1][np.newaxis, :] * shifts[1][:,np.newaxis])
                 imgs_shiftfft = imgs_shiftfft * shishift[np.newaxis, :, np.newaxis, :]
-                fft_axes = np.array(axes)+len(imgs_shiftfft.shape)-2
-            inv_shape = tuple(imgs_shiftfft.shape[:2]) + tuple(int(s) for s in transformed_shape)
+                fft_axes = np.array(axes)+np.ndim(imgs_shiftfft)-2
+            inv_shape = tuple(np.shape(imgs_shiftfft)[:2]) + tuple(int(s) for s in transformed_shape)
 
 
         elif 1 in axes:
             # Fourier shift
             shishift = np.exp(shifter[1][:, np.newaxis] * shifts[1][np.newaxis, :])
             imgs_shiftfft = imgs_fft[:, :, :, np.newaxis] * shishift[np.newaxis, np.newaxis, :, :]
-            inv_shape = tuple([imgs_shiftfft.shape[0]]) + tuple(int(s) for s in transformed_shape) + tuple([imgs_shiftfft.shape[-1]])
-            fft_axes = [len(imgs_shiftfft.shape)-2]
+            inv_shape = tuple([np.shape(imgs_shiftfft)[0]]) + tuple(int(s) for s in transformed_shape) + tuple([np.shape(imgs_shiftfft)[-1]])
+            fft_axes = [np.ndim(imgs_shiftfft)-2]
 
         # Inverse Fourier transform.
         # The n-dimensional transform could pose problem for very large images
-        # UGLY: We made a decision on fft_axes/inv_shape by inspecting the shape of imgs_shiftfft
-        # which is screwing us up for Tensors. Perhaps another way of doing this?
-        if USE_TORCH:
-            fft_axes = [ax-1 for ax in fft_axes]
-            inv_shape = inv_shape[:-1]
         op = fft.Fourier.from_fft(imgs_shiftfft, fft_shape, inv_shape, fft_axes).image
         return op
 
@@ -622,8 +617,10 @@ class LowResObservation(Observation):
         cuts = weights_ > 0
         log_sigma[cuts] = np.log(1/weights_[cuts])
         log_norm = (
-            np.prod(images_.shape) / 2 * np.log(2 * np.pi)
+            np.prod(images_.shape) / 2 * np.log(np.array(2 * np.pi))
             + np.sum(log_sigma) / 2
         )
 
-        return log_norm + 0.5 * np.sum(weights_ * (model_ - images_) ** 2)
+
+        res = log_norm + 0.5 * np.sum(weights_ * (model_ - images_) ** 2)
+        return res

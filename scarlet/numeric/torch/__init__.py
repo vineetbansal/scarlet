@@ -19,26 +19,9 @@ def intercepted(f):
     return func_wrapper
 
 
-def for_all_methods(decorator):
-    def decorate(cls):
-        for attr in cls.__dict__: # there's propably a better way to do this
-            if callable(getattr(cls, attr)):
-                setattr(cls, attr, decorator(getattr(cls, attr)))
-        return cls
-    return decorate
-
-
-@for_all_methods(intercepted)
 class MyTensor(TensorBase):
 
     is_real = True
-
-    @property
-    def shapea(self):
-        return self._original_shape
-
-    def __getattr__(self, item):
-        return intercepted(super(MyTensor, self).__getattr__(item))
 
     def astype(self, dtype):
         if dtype is None:
@@ -176,6 +159,18 @@ class Module:
         # Implementation mirrors that of numpy
         res = Module.array(a, dtype, copy=False)
         return res
+
+    @staticmethod
+    def shape(x):
+        if hasattr(x, 'is_real') and not x.is_real:
+            return x[..., -1].shape
+        return x.shape
+
+    @staticmethod
+    def ndim(x):
+        if hasattr(x, 'is_real') and not x.is_real:
+            return x.ndim - 1
+        return x.ndim
 
     @staticmethod
     @intercepted

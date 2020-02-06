@@ -1,8 +1,7 @@
 import torch
-import importlib
 import warnings
 
-from scarlet.numeric.torch import intercepted, MyTensor
+from scarlet.numeric.torch import intercepted
 
 
 class Module:
@@ -61,10 +60,6 @@ class Module:
     @staticmethod
     @intercepted
     def fftshift(x, axes=(-2, -1)):
-        # if tuple(axes) != (-2, -1):
-        #     ndim = x.ndim if x.is_real else x.ndim - 1
-        #     if not (len(axes) == 2 and max(axes) == ndim-1):
-        #         raise AssertionError('Only axes (-2, -1) supported for now.')
         if x.is_real:
             warnings.warn('If calling fftshift on real valued inputs, call rfftshift directly.')
             return Module.rfftshift(x, axes=axes)
@@ -90,13 +85,16 @@ class Module:
     @staticmethod
     @intercepted
     def rfftn(x, axes=(-2, -1), onesided=True):
+        axes = tuple(ax % x.ndim for ax in axes)
         # UGLY!!: A code path (sinc_shift?) is doing an rfft on a middle axis, which torch doesn't support!
-        if tuple(axes) == (1,) and x.ndim == 3:
-            retval = torch.rfft(x.permute(0, 2, 1), len(axes), onesided=onesided).permute(0, 2, 1, 3)
+        if len(axes)==1 and axes[0] < x.ndim - 1:
+            permuted_axes = tuple(range(axes[0])) + tuple(range(axes[0]+1, x.ndim)) + (axes[0],)
+            retval = torch.rfft(x.permute(*permuted_axes), len(axes), onesided=onesided).permute(*permuted_axes + (x.ndim,))
             retval.is_real = False
             return retval
 
-        retval = torch.rfft(x, 2, onesided=onesided)
+        assert axes == tuple(range(x.ndim))[-len(axes):]  # Ensure axes are towards the end
+        retval = torch.rfft(x, len(axes), onesided=onesided)
         retval.is_real = False
         return retval
 
@@ -105,11 +103,15 @@ class Module:
     def irfftn(x, s=None, axes=(-2, -1), onesided=True):
         assert not x.is_real, "x needs to be a complex array"
 
+        axes = tuple(ax % (x.ndim - 1) for ax in axes)
         # UGLY!!: Some code path is doing an irfftn on a middle axis, which torch doesn't support!
-        if tuple(axes) == (2,) and x.ndim == 5:
-            retval = torch.irfft(x.permute(0, 1, 3, 2, 4), len(axes), signal_sizes=s, onesided=onesided).permute(0, 1, 3, 2)
+        if len(axes) == 1 and axes[0] < x.ndim - 2:
+            permuted_axes = tuple(range(axes[0])) + tuple(range(axes[0] + 1, x.ndim - 1)) + (axes[0],)
+            retval = torch.irfft(x.permute(*permuted_axes + (x.ndim-1,)), len(axes), signal_sizes=s, onesided=onesided).permute(*permuted_axes)
             retval.is_real = True
             return retval
+
+        assert axes == tuple(range(x.ndim-1))[-len(axes):]  # Ensure axes are towards the end
         return torch.irfft(x, len(axes), signal_sizes=s, onesided=onesided)
 
     @staticmethod

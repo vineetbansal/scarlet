@@ -21,7 +21,6 @@ def patch_to(cls):
 @patch_to(Tensor)
 def as_subclass(self, typ):
     # return typ.__new__(typ, self)
-    self._original_shape = self.shape
     self.__class__ = typ
     return self
 
@@ -47,8 +46,6 @@ def _fa_rebuild_tensor(cls, *args, **kwargs):
 class TensorBase(Tensor):
     def __new__(cls, x, **kwargs):
         res = tensor(x)
-        res._original_shape = res.shape
-        res._original_ndim = res.ndim
         res = res.as_subclass(cls)
         return res
 
