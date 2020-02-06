@@ -1,18 +1,29 @@
 from numpy import ndarray, array
-
 import torch
 from torch import Tensor
 from collections import OrderedDict
-
-from .dispatch import patch, retain_type
-
-try:
-    from types import WrapperDescriptorType, MethodWrapperType, MethodDescriptorType
-except ImportError:
-    WrapperDescriptorType = type(object.__init__)
-    MethodWrapperType = type(object().__str__)
-    MethodDescriptorType = type(str.join)
 from types import BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType
+
+MethodWrapperType = type(object().__str__)
+MethodDescriptorType = type(str.join)
+
+
+def patch_to(cls):
+    def _inner(f):
+        f2 = FunctionType(f.__code__, f.__globals__, f.__name__, f.__defaults__, f.__closure__)
+        f2.__dict__.update(f.__dict__)
+        f2.__qualname__ = f"{cls.__name__}.{f.__name__}"
+        setattr(cls, f.__name__, f2)
+        return f
+    return _inner
+
+
+@patch_to(Tensor)
+def as_subclass(self, typ):
+    # return typ.__new__(typ, self)
+    self._original_shape = self.shape
+    self.__class__ = typ
+    return self
 
 
 def tensor(x):
@@ -33,22 +44,18 @@ def _fa_rebuild_tensor(cls, *args, **kwargs):
     return obj
 
 
-@patch
-def as_subclass(self:Tensor, typ):
-    self.__class__ = typ
-    return self
-
-
 class TensorBase(Tensor):
     def __new__(cls, x, **kwargs):
-        res = tensor(x).as_subclass(cls)
-        # res._meta = kwargs
+        res = tensor(x)
+        res._original_shape = res.shape
+        res._original_ndim = res.ndim
+        res = res.as_subclass(cls)
         return res
 
     def __reduce_ex__(self, proto):
         torch.utils.hooks.warn_if_has_hooks(self)
         args = (type(self), self.storage(), self.storage_offset(), tuple(self.size()), self.stride())
-        return (_fa_rebuild_tensor, args + (self.requires_grad, OrderedDict(), self.__dict__))
+        return _fa_rebuild_tensor, args + (self.requires_grad, OrderedDict(), self.__dict__)
 
     def __getitem__(self, i):
         # TODO: Why doesn't this work if i is a TensorBase object?
@@ -70,19 +77,30 @@ class TensorBase(Tensor):
         return res
 
 
-def _patch_all():
-    if getattr(TensorBase, '_patched', False):
+def retain_type(new, old):
+    if new is None:
         return
+    if not isinstance(old, type(new)):
+        return new
+    typ = type(old)
 
+    if isinstance(typ, type(None)) or isinstance(new, typ):
+        return new
+
+    res = new.as_subclass(typ)
+    res.__dict__ = old.__dict__
+    return res
+
+
+def _patch_all():
     def get_f(fn):
         def _f(self, *args, **kwargs):
-            cls = self.__class__
             res = getattr(super(TensorBase, self), fn)(*args, **kwargs)
             return retain_type(res, self)
         return _f
 
-    skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ __hash__ __init__ \
-        __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
+    skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ \
+    __hash__ __init__ __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
 
     t = tensor([1])
     for fn in dir(t):
@@ -91,8 +109,6 @@ def _patch_all():
         f = getattr(t, fn)
         if isinstance(f, (MethodWrapperType, BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType)):
             setattr(TensorBase, fn, get_f(fn))
-    TensorBase._patched = True
 
 
 _patch_all()
-

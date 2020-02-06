@@ -90,15 +90,12 @@ class Module:
     @staticmethod
     @intercepted
     def rfftn(x, axes=(-2, -1), onesided=True):
-        # UGLY!!: Some code path is doing an rfft on a middle axis, which torch doesn't support!
+        # UGLY!!: A code path (sinc_shift?) is doing an rfft on a middle axis, which torch doesn't support!
         if tuple(axes) == (1,) and x.ndim == 3:
-            retval = torch.rfft(x.permute(0, 2, 1), 1, onesided=onesided).permute(0, 2, 1, 3)
+            retval = torch.rfft(x.permute(0, 2, 1), len(axes), onesided=onesided).permute(0, 2, 1, 3)
             retval.is_real = False
             return retval
 
-        if tuple(axes) != (-2, -1):
-            if not (len(axes) == 2 and max(axes) == x.ndim-1):
-                raise AssertionError('Only axes (-2, -1) supported for now.')
         retval = torch.rfft(x, 2, onesided=onesided)
         retval.is_real = False
         return retval

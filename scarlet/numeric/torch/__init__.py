@@ -6,9 +6,39 @@ from .core import TensorBase
 torch.set_grad_enabled(False)
 
 
+def intercepted(f):
+    def func_wrapper(*args, **kwargs):
+        retval = f(*args, **kwargs)
+        if isinstance(retval, torch.Tensor):
+            retval = retval.as_subclass(MyTensor)
+        elif isinstance(retval, list):
+            retval = [r.as_subclass(MyTensor) for r in retval]
+        elif isinstance(retval, tuple):
+            retval = tuple([r.as_subclass(MyTensor) for r in retval])
+        return retval
+    return func_wrapper
+
+
+def for_all_methods(decorator):
+    def decorate(cls):
+        for attr in cls.__dict__: # there's propably a better way to do this
+            if callable(getattr(cls, attr)):
+                setattr(cls, attr, decorator(getattr(cls, attr)))
+        return cls
+    return decorate
+
+
+@for_all_methods(intercepted)
 class MyTensor(TensorBase):
 
     is_real = True
+
+    @property
+    def shapea(self):
+        return self._original_shape
+
+    def __getattr__(self, item):
+        return intercepted(super(MyTensor, self).__getattr__(item))
 
     def astype(self, dtype):
         if dtype is None:
@@ -111,19 +141,6 @@ class MyTensor(TensorBase):
                 return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
         else:
             return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
-
-
-def intercepted(f):
-    def func_wrapper(*args, **kwargs):
-        retval = f(*args, **kwargs)
-        if isinstance(retval, torch.Tensor):
-            retval = retval.as_subclass(MyTensor)
-        elif isinstance(retval, list):
-            retval = [r.as_subclass(MyTensor) for r in retval]
-        elif isinstance(retval, tuple):
-            retval = tuple([r.as_subclass(MyTensor) for r in retval])
-        return retval
-    return func_wrapper
 
 
 class Module:
