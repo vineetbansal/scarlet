@@ -1,7 +1,48 @@
-from scarlet.numeric import np
+import numpy
 from scarlet.numeric.torch import MyTensor
 from scarlet.constraint import Constraint, ConstraintChain
 from scarlet.prior import Prior
+
+
+class _Param(numpy.ndarray):
+    # Something we can pass on to proxmin
+    def __new__(cls, t):
+        array = t.detach().numpy()
+        obj = numpy.asarray(array, dtype=array.dtype).view(cls)
+        obj._value = t
+        obj.name = t.name_
+        obj.prior = t.prior
+        obj.constraint = t.constraint
+        obj.step = t.step
+        obj.std = t.std
+        obj.m = t.m
+        obj.v = t.v
+        obj.vhat = t.vhat
+        obj.fixed = t.fixed
+        obj.constructed = True
+        return obj
+
+    def __array_finalize__(self, obj):
+        if obj is None: return
+        self.name = getattr(obj, "name", "unnamed")
+        self.prior = getattr(obj, "prior", None)
+        self.constraint = getattr(obj, "constraint", None)
+        self.step = getattr(obj, "step", 0)
+        self.std = getattr(obj, "std", None)
+        self.m = getattr(obj, "m", None)
+        self.v = getattr(obj, "v", None)
+        self.vhat = getattr(obj, "vhat", None)
+        self.fixed = getattr(obj, "fixed", False)
+
+    @property
+    def _data(self):
+        return self.view(numpy.ndarray)
+
+    def __setattr__(self, key, value):
+        if getattr(self, 'constructed', False):
+            return setattr(self._value, key, value)
+        else:
+            return super().__setattr__(key, value)
 
 
 class Parameter(MyTensor):
@@ -71,7 +112,10 @@ class Parameter(MyTensor):
 
     @property
     def _data(self):
-        return self.view(np.ndarray)
+        return self
+
+    def asnumpy(self):
+        return _Param(self)
 
 
 def relative_step(X, it, factor=0.1):

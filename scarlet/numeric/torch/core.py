@@ -20,8 +20,8 @@ def patch_to(cls):
 
 @patch_to(Tensor)
 def as_subclass(self, typ):
-    # return typ.__new__(typ, self)
-    self.__class__ = typ
+    if not isinstance(self, typ):
+        self.__class__ = typ
     return self
 
 

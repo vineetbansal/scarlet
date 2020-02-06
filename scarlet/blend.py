@@ -68,7 +68,7 @@ class Blend(ComponentTree):
                     for p in self.parameters:
                         if p.grad is not None:
                             p.grad.data.zero_()
-                    loss = self._loss(*X)
+                    loss = self._loss(*[x._value for x in X])
                     loss.backward(retain_graph=True)
                     return [p.grad.numpy() for p in self.parameters]
 
@@ -105,41 +105,7 @@ class Blend(ComponentTree):
         Vhat = tuple(x.vhat if x.vhat is not None else numpy.zeros(x.shape) for x in X)
 
         if USE_TORCH:
-            class _Param(numpy.ndarray):
-                def __new__(cls, t, prior=None, constraint=None, step=0, converged=False, std=None, fixed=False):
-                    array = t.detach().numpy()
-                    obj = numpy.asarray(array, dtype=array.dtype).view(cls)
-                    obj.tensor = weakref.ref(t)
-                    obj.name = t.name_
-                    obj.prior = t.prior
-                    obj.constraint = t.constraint
-                    obj.step = t.step
-                    obj.std = t.std
-                    obj.m = t.m
-                    obj.v = t.v
-                    obj.vhat = t.vhat
-                    obj.fixed = t.fixed
-                    return obj
-
-                def __array_finalize__(self, obj):
-                    if obj is None: return
-                    self.tensor = getattr(obj, 'tensor', None)
-                    self.name = getattr(obj, "name", "unnamed")
-                    self.prior = getattr(obj, "prior", None)
-                    self.constraint = getattr(obj, "constraint", None)
-                    self.step = getattr(obj, "step", 0)
-                    self.std = getattr(obj, "std", None)
-                    self.m = getattr(obj, "m", None)
-                    self.v = getattr(obj, "v", None)
-                    self.vhat = getattr(obj, "vhat", None)
-                    self.fixed = getattr(obj, "fixed", False)
-
-                @property
-                def _data(self):
-                    return self.view(numpy.ndarray)
-
-            # Convert to a subclass of ndarray that proxmin can use
-            X = [_Param(x) for x in X]
+            X = [x.asnumpy() for x in X]
 
         proxmin.adaprox(
             X,
@@ -160,8 +126,6 @@ class Blend(ComponentTree):
 
         # set convergence and standard deviation from optimizer
         for p, m, v, vhat in zip(X, M, V, Vhat):
-            if USE_TORCH:
-                p = p.tensor()
             p.m = m
             p.v = v
             p.vhat = vhat
@@ -182,7 +146,7 @@ class Blend(ComponentTree):
         total_loss = 0
         for observation in self.observations:
             total_loss = total_loss + observation.get_loss(model)
-        self.loss.append(total_loss if USE_TORCH else total_loss._value)
+        self.loss.append(total_loss._value)
         return total_loss
 
     def _callback(self, *parameters, it=None, e_rel=1e-3, callback=None):

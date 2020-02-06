@@ -1,4 +1,4 @@
-USE_TORCH = False
+USE_TORCH = True
 
 if USE_TORCH:
     from .torch import Module, assert_array_equal, assert_almost_equal

@@ -23,6 +23,11 @@ class MyTensor(TensorBase):
 
     is_real = True
 
+    @property
+    def _value(self):
+        # For backward compatibility when client code wants unboxed value of an tracked ndarray
+        return self
+
     def astype(self, dtype):
         if dtype is None:
             return self

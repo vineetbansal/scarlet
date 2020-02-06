@@ -435,10 +435,10 @@ class ExtendedSource(FactorizedComponent):
         self.symmetric = symmetric
         self.monotonic = monotonic
         center = np.array(frame.get_pixel(sky_coord), dtype="float")
-        self.pixel_center = tuple([int(_coord) for _coord in np.round(center).astype("int")])
+        self.pixel_center = np.array([int(_coord) for _coord in np.round(center).astype("int")])
 
         if shifting:
-            shift = Parameter(center - np.array(self.pixel_center), name="shift", step=1e-1)
+            shift = Parameter(center - self.pixel_center, name="shift", step=1e-1)
         else:
             shift = None
 
