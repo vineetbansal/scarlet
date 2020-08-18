@@ -44,7 +44,7 @@ class TensorBase(Tensor):
     pass
 
 
-def intercepted(f):
+def as_mytensor(f):
     def func_wrapper(*args, **kwargs):
         retval = f(*args, **kwargs)
         if isinstance(retval, torch.Tensor):
@@ -72,7 +72,6 @@ class MyTensor(TensorBase):
         return _fa_rebuild_tensor, args + (self.requires_grad, OrderedDict(), self.__dict__)
 
     def __getitem__(self, i):
-        # TODO: Why doesn't this work if i is a TensorBase object?
         if isinstance(i, MyTensor):
             i = i.data
         res = super(Tensor, self).__getitem__(i)
@@ -84,7 +83,6 @@ class MyTensor(TensorBase):
             return res
 
     def __setitem__(self, key, value):
-        # TODO: Why doesn't this work if key is a TensorBase object?
         if isinstance(key, MyTensor):
             key = key.data
         res = super(Tensor, self).__setitem__(key, value)
@@ -116,7 +114,7 @@ class MyTensor(TensorBase):
         if dtype != 'complex':
             return getattr(self, dtype)()
         else:
-            retval = intercepted(torch.stack)([self, torch.zeros(self.shape, dtype=self.dtype)], axis=-1)
+            retval = as_mytensor(torch.stack)([self, torch.zeros(self.shape, dtype=self.dtype)], axis=-1)
             retval.is_real = False
             return retval
 
@@ -211,10 +209,10 @@ class Module:
     bool = torch.bool
     flipud = staticmethod(lambda x: torch.flip(x, [0]))
     fliplr = staticmethod(lambda x: torch.flip(x, [1]))
-    arctan2 = staticmethod(intercepted(torch.atan2))
+    arctan2 = staticmethod(as_mytensor(torch.atan2))
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def array(x, dtype='double', copy=True):
         if isinstance(x, (list, tuple)) and all(isinstance(_x, torch.Tensor) for _x in x):
             assert copy, "Can only support this operation if making a copy"
@@ -245,13 +243,13 @@ class Module:
         return x.ndim
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def concatenate(x):
         retval = torch.cat(x)
         return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def real(x):
         if x.is_real:
             return x
@@ -261,7 +259,7 @@ class Module:
             return x
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def imag(x):
         if x.is_real:
             return torch.zeros_like(x)
@@ -271,7 +269,7 @@ class Module:
             return x
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def exp(x):
         if x.is_real:
             return torch.exp(x)
@@ -284,7 +282,7 @@ class Module:
             return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def pad(arr, pad_width, mode='constant', constant_values=0):
         # padding in torch.nn.functional expects padding to be specified from last- to first-axis, as a flattened tuple
         # If a single (left_padding, right_padding) tuple was provided, duplicate it for all axes.
@@ -294,7 +292,7 @@ class Module:
         return torch.nn.functional.pad(arr, pad_width2, mode=mode, value=constant_values)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def flip(arr, axis=None):
         if axis is None:
             dims = list(range(arr.ndim))
@@ -304,21 +302,21 @@ class Module:
         return torch.flip(arr, dims=dims)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def abs(x):
         if not isinstance(x, MyTensor):
             x = MyTensor(x)
         return torch.abs(x)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def floor(x):
         if not isinstance(x, MyTensor):
             x = MyTensor(x).float()
         return torch.floor(x)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def any(x):
         if isinstance(x, torch.Tensor):
             return x.any()
@@ -326,7 +324,7 @@ class Module:
             return MyTensor(x).any()
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def prod(x, axis=None):
         assert axis in (None, 0), "Only product along axis = 0/None supported"
         if not isinstance(x, torch.Tensor):
@@ -343,7 +341,7 @@ class Module:
             return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def piecewise(x, condlist, funclist):
         assert len(condlist) == len(funclist), 'Condition list and Function list must be equal length'
 
@@ -358,14 +356,14 @@ class Module:
         return y
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def outer(x, y):
         assert x.ndim == 1, 'Only 1d inputs supported'
         assert y.ndim == 1, 'Only 1d inputs supported'
         return torch.einsum('i,j->ij', x, y)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def sinc(x):
         return Module.piecewise(
             x,
@@ -374,12 +372,12 @@ class Module:
         )
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def expand_dims(x, dim):
         return x.unsqueeze(dim)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def min(x, axis=None):
         if isinstance(x, list):
             x = torch.stack(x)
@@ -394,7 +392,7 @@ class Module:
         return torch.squeeze(x)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def meshgrid(x, y, indexing='xy'):
         # Numpy defaults to xy indexing for meshgrid, while torch defaults to ij (transposes of what np would return)
         assert indexing == 'xy', 'Only xy indexing supported'
@@ -410,7 +408,7 @@ class Module:
         return tuple(reversed(out))
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def maximum(a, b):
         if isinstance(b, (float, int)):
             return torch.clamp(a, b)
@@ -436,7 +434,7 @@ class Module:
             module = importlib.import_module(self.__module__ + '.' + item)
             module_class = module.Module
             return module_class
-        return intercepted(getattr(torch, item))
+        return as_mytensor(getattr(torch, item))
 
 
 def assert_array_equal(a, b, **kwargs):
@@ -493,7 +491,7 @@ def _patch_all():
     skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ \
     __hash__ __init__ __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
 
-    t = MyTensor([1])
+    t = TensorBase([1])
     for fn in dir(t):
         if fn in skips:
             continue

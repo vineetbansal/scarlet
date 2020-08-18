@@ -1,11 +1,11 @@
 import torch
-from scarlet.numeric.torch import intercepted
+from scarlet.numeric.torch import as_mytensor
 
 
 class Module:
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def rand(*shape):
         return torch.rand(tuple(shape))
 

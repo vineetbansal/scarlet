@@ -1,7 +1,7 @@
 import torch
 import warnings
 
-from scarlet.numeric.torch import intercepted
+from scarlet.numeric.torch import as_mytensor
 
 
 class Module:
@@ -16,14 +16,14 @@ class Module:
         return torch.cat([back, front], axis)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def irfftshift(x, axes=(-2, -1)):
         for ax in axes:
             x = Module.roll_n(x, axis=ax, n=x.shape[ax] // 2)
         return x
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def ifftshift(x, axes=(-2, -1)):
         if x.is_real:
             warnings.warn('If calling ifftshift on real valued inputs, call irfftshift directly.')
@@ -48,7 +48,7 @@ class Module:
         return torch.stack((real, imag), -1)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def rfftshift(x, axes=(-2, -1)):
         for ax in axes:
             n_shift = x.size(ax) // 2
@@ -58,7 +58,7 @@ class Module:
         return x
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def fftshift(x, axes=(-2, -1)):
         if x.is_real:
             warnings.warn('If calling fftshift on real valued inputs, call rfftshift directly.')
@@ -83,7 +83,7 @@ class Module:
         return torch.stack((real, imag), -1)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def rfftn(x, axes=(-2, -1), onesided=True):
         axes = tuple(ax % x.ndim for ax in axes)
         # UGLY!!: A code path (sinc_shift?) is doing an rfft on a middle axis, which torch doesn't support!
@@ -99,7 +99,7 @@ class Module:
         return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def irfftn(x, s=None, axes=(-2, -1), onesided=True):
         assert not x.is_real, "x needs to be a complex array"
 
@@ -115,7 +115,7 @@ class Module:
         return torch.irfft(x, len(axes), signal_sizes=s, onesided=onesided)
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def fft2(x):
         if x.is_real:
             retval = Module.rfftn(x, onesided=False)
@@ -126,7 +126,7 @@ class Module:
         return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def ifft2(x):
         if x.is_real:
             retval = Module.irfftn(x, onesided=False)
@@ -137,7 +137,7 @@ class Module:
         return retval
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def fftfreq(n, d=1.0):
         val = 1.0 / (n * d)
         results = torch.empty(n, dtype=int)
@@ -149,7 +149,7 @@ class Module:
         return results * val
 
     @staticmethod
-    @intercepted
+    @as_mytensor
     def rfftfreq(n, d=1.0):
         val = 1.0 / (n * d)
         N = n // 2 + 1
@@ -161,4 +161,4 @@ class Module:
         Catch-all method to to allow a straight pass-through of any attribute that is not supported above.
         """
         func = getattr(torch, item)
-        return intercepted(func)
+        return as_mytensor(func)
