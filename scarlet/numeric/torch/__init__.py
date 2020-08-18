@@ -1,9 +1,47 @@
 import torch
 import numpy as np
 import importlib
-from .core import TensorBase
+
+from numpy import ndarray, array
+import torch
+from torch import Tensor
+from collections import OrderedDict
+from types import BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType
+
+MethodWrapperType = type(object().__str__)
+MethodDescriptorType = type(str.join)
+
 
 torch.set_grad_enabled(False)
+
+
+def as_subclass(self, typ):
+    if not isinstance(self, typ):
+        self.__class__ = typ
+    return self
+Tensor.as_subclass = as_subclass
+
+
+def tensor(x):
+    if isinstance(x, Tensor):
+        res = x
+    elif isinstance(x, (tuple, list)):
+        res = torch.tensor(x)
+    elif isinstance(x, ndarray):
+        res = torch.from_numpy(x)
+    else:
+        res = torch.from_numpy(array(x))
+    return res
+
+
+def _fa_rebuild_tensor(cls, *args, **kwargs):
+    obj = cls(torch._utils._rebuild_tensor_v2(*args[0:-1], **kwargs))
+    obj.__dict__.update(args[-1])
+    return obj
+
+
+class TensorBase(Tensor):
+    pass
 
 
 def intercepted(f):
@@ -22,6 +60,35 @@ def intercepted(f):
 class MyTensor(TensorBase):
 
     is_real = True
+
+    def __new__(cls, x, **kwargs):
+        res = tensor(x)
+        res = res.as_subclass(cls)
+        return res
+
+    def __reduce_ex__(self, proto):
+        torch.utils.hooks.warn_if_has_hooks(self)
+        args = (type(self), self.storage(), self.storage_offset(), tuple(self.size()), self.stride())
+        return _fa_rebuild_tensor, args + (self.requires_grad, OrderedDict(), self.__dict__)
+
+    def __getitem__(self, i):
+        # TODO: Why doesn't this work if i is a TensorBase object?
+        if isinstance(i, MyTensor):
+            i = i.data
+        res = super(Tensor, self).__getitem__(i)
+        if isinstance(res, Tensor):
+            res = res.as_subclass(type(self))
+            res.is_real = self.is_real
+            return res
+        else:
+            return res
+
+    def __setitem__(self, key, value):
+        # TODO: Why doesn't this work if key is a TensorBase object?
+        if isinstance(key, MyTensor):
+            key = key.data
+        res = super(Tensor, self).__setitem__(key, value)
+        return res
 
     @property
     def _value(self):
@@ -102,7 +169,7 @@ class MyTensor(TensorBase):
             y.is_real = False
             return y
         else:
-            retval = super(TensorBase, self).__mul__(other)
+            retval = super(MyTensor, self).__mul__(other)
             retval.is_real = self.is_real
             return retval.as_subclass(MyTensor)
 
@@ -393,3 +460,46 @@ def assert_almost_equal(a, b, **kwargs):
     else:
         decimal = kwargs.pop('decimal')
     return testing.assert_almost_equal(a, b, decimal=decimal, **kwargs)
+
+
+def retain_type(from_, to_):
+    """
+    Downcast an object to a more specific type
+    :param from_: Instance to be downcast
+    :param to_: Instance of a class to which we will be down-casting; should be be a subclass of type(from_)
+    :return: A new instance of type type(to_)
+    """
+    if from_ is None:
+        return
+    if not isinstance(to_, type(from_)):
+        return from_
+    typ = type(to_)
+
+    if isinstance(typ, type(None)) or isinstance(from_, typ):
+        return from_
+
+    res = from_.as_subclass(typ)
+    res.__dict__ = to_.__dict__
+    return res
+
+
+def _patch_all():
+    def get_f(fn):
+        def _f(self, *args, **kwargs):
+            res = getattr(super(TensorBase, self), fn)(*args, **kwargs)
+            return retain_type(res, self)
+        return _f
+
+    skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ \
+    __hash__ __init__ __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
+
+    t = MyTensor([1])
+    for fn in dir(t):
+        if fn in skips:
+            continue
+        f = getattr(t, fn)
+        if isinstance(f, (MethodWrapperType, BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType)):
+            setattr(TensorBase, fn, get_f(fn))
+
+
+_patch_all()
