@@ -1,199 +1,19 @@
-import torch
+"""
+This module provides us with the `Module` class that serves as a drop-in replacement for numpy, but uses torch
+operations in the background.
+
+Note that this is NOT an exhaustive implementation of the numpy interface, but just a "good-enough" interface
+developed by following the code-path of Scarlet tests. It's very possible that certain key operations have not
+been implemented, because they're not covered by the unit tests.
+"""
+
 import numpy as np
 import importlib
-
-from numpy import ndarray, array
 import torch
 from torch import Tensor
-from collections import OrderedDict
-from types import BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType
 
-MethodWrapperType = type(object().__str__)
-MethodDescriptorType = type(str.join)
-
-
-torch.set_grad_enabled(False)
-
-
-def as_subclass(self, typ):
-    if not isinstance(self, typ):
-        self.__class__ = typ
-    return self
-Tensor.as_subclass = as_subclass
-
-
-def tensor(x):
-    if isinstance(x, Tensor):
-        res = x
-    elif isinstance(x, (tuple, list)):
-        res = torch.tensor(x)
-    elif isinstance(x, ndarray):
-        res = torch.from_numpy(x)
-    else:
-        res = torch.from_numpy(array(x))
-    return res
-
-
-def _fa_rebuild_tensor(cls, *args, **kwargs):
-    obj = cls(torch._utils._rebuild_tensor_v2(*args[0:-1], **kwargs))
-    obj.__dict__.update(args[-1])
-    return obj
-
-
-class TensorBase(Tensor):
-    pass
-
-
-def as_mytensor(f):
-    def func_wrapper(*args, **kwargs):
-        retval = f(*args, **kwargs)
-        if isinstance(retval, torch.Tensor):
-            retval = retval.as_subclass(MyTensor)
-        elif isinstance(retval, list):
-            retval = [r.as_subclass(MyTensor) for r in retval]
-        elif isinstance(retval, tuple):
-            retval = tuple([r.as_subclass(MyTensor) for r in retval])
-        return retval
-    return func_wrapper
-
-
-class MyTensor(TensorBase):
-
-    is_real = True
-
-    def __new__(cls, x, **kwargs):
-        res = tensor(x)
-        res = res.as_subclass(cls)
-        return res
-
-    def __reduce_ex__(self, proto):
-        torch.utils.hooks.warn_if_has_hooks(self)
-        args = (type(self), self.storage(), self.storage_offset(), tuple(self.size()), self.stride())
-        return _fa_rebuild_tensor, args + (self.requires_grad, OrderedDict(), self.__dict__)
-
-    def __getitem__(self, i):
-        if isinstance(i, MyTensor):
-            i = i.data
-        res = super(Tensor, self).__getitem__(i)
-        if isinstance(res, Tensor):
-            res = res.as_subclass(type(self))
-            res.is_real = self.is_real
-            return res
-        else:
-            return res
-
-    def __setitem__(self, key, value):
-        if isinstance(key, MyTensor):
-            key = key.data
-        res = super(Tensor, self).__setitem__(key, value)
-        return res
-
-    @property
-    def _value(self):
-        # For backward compatibility when client code wants unboxed value of an tracked ndarray
-        return self
-
-    def astype(self, dtype):
-        if dtype is None:
-            return self
-        elif not isinstance(dtype, str):
-            try:
-                dtype = dtype.__name__  # for numpy types
-            except AttributeError:
-                dtype = str(dtype)
-                assert dtype.startswith('torch.')
-                dtype = {'torch.float32': 'float', 'torch.float64': 'double'}[dtype]
-        else:
-            if dtype == 'float':
-                dtype = 'double'  # numpy 'float' is 64bit, corresponding to torch double
-
-        if dtype not in ('float', 'double', 'int', 'complex'):
-            raise AssertionError('unrecognized dtype')
-
-        # # For non-complex types, we can simply use torch conversion facility .double(), .float() etc.
-        if dtype != 'complex':
-            return getattr(self, dtype)()
-        else:
-            retval = as_mytensor(torch.stack)([self, torch.zeros(self.shape, dtype=self.dtype)], axis=-1)
-            retval.is_real = False
-            return retval
-
-    def copy(self):
-        return self.clone()
-
-    def view(self, target_class):
-        return self.as_subclass(target_class)
-
-    def max(self, axis=None):
-        # Torch 'max' doesn't support multiple axes!
-        if axis is None:
-            return torch.max(self)
-        elif isinstance(axis, int):
-            return torch.max(self, axis).values
-
-        x = self.clone()
-        for ax in axis:
-            x = torch.max(x, dim=ax, keepdim=True).values
-        return torch.squeeze(x)
-
-    def __mul__(self, other):
-        if isinstance(other, complex):
-            if self.is_real:
-                x = self.astype('complex')
-            else:
-                x = self
-            a, b, c, d = Module.real(x), Module.imag(x), other.real, other.imag
-            y = torch.stack([a * c - b * d, a * d + b * c], axis=-1)
-            y = y.as_subclass(MyTensor)
-            y.is_real = False
-            return y
-        elif isinstance(other, MyTensor) and not other.is_real:
-            if self.is_real:
-                x = self.astype('complex')
-            else:
-                x = self
-            a, b, c, d = Module.real(x), Module.imag(x), Module.real(other), Module.imag(other)
-            a.is_real = b.is_real = c.is_real = d.is_real = True
-            y = torch.stack([a * c - b * d, a * d + b * c], axis=-1)
-            y = y.as_subclass(MyTensor)
-            y.is_real = False
-            return y
-        elif not self.is_real and other.is_real:
-            x = self
-            a, b, c, d = Module.real(x), Module.imag(x), Module.real(other), Module.imag(other)
-            a.is_real = b.is_real = c.is_real = d.is_real = True
-            y = torch.stack([a * c - b * d, a * d + b * c], axis=-1)
-            y = y.as_subclass(MyTensor)
-            y.is_real = False
-            return y
-        else:
-            retval = super(MyTensor, self).__mul__(other)
-            retval.is_real = self.is_real
-            return retval.as_subclass(MyTensor)
-
-    def __rmul__(self, other):
-        return self.__mul__(other)
-
-    def __pow__(self, power, modulo=None):
-        if not self.is_real:
-            if isinstance(power, torch.Tensor):
-                if isinstance(power, MyTensor):
-                    assert power.is_real, 'Can only raise to a real power'
-                re, im = Module.real(self), Module.imag(self)
-                r = (torch.sqrt(re**2 + im**2)) ** power
-                theta = power * torch.atan2(im, re)
-                re, im = torch.cos(theta), torch.sin(theta)
-                re = r * re
-                im = r * im
-                y = torch.stack([re, im], axis=-1)
-                y = y.as_subclass(MyTensor)
-                y.is_real = False
-                return y
-
-            else:
-                return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
-        else:
-            return super(TensorBase, self).__pow__(power).as_subclass(MyTensor)
+from .wrap import as_subclass, patch_all
+from .mytensor import as_mytensor, MyTensor
 
 
 class Module:
@@ -210,6 +30,16 @@ class Module:
     flipud = staticmethod(lambda x: torch.flip(x, [0]))
     fliplr = staticmethod(lambda x: torch.flip(x, [1]))
     arctan2 = staticmethod(as_mytensor(torch.atan2))
+
+    def __getattr__(self, item):
+        """
+        Catch-all method to to allow a straight pass-through of any attribute that is not supported below.
+        """
+        if item in ('fft', 'linalg', 'random', 'testing'):
+            module = importlib.import_module(self.__module__ + '.submodules.' + item)
+            module_class = module.Module
+            return module_class
+        return as_mytensor(getattr(torch, item))
 
     @staticmethod
     @as_mytensor
@@ -426,78 +256,19 @@ class Module:
         assert type(t) is tuple, "Only tuples supported for size calculation."
         return len(t)
 
-    def __getattr__(self, item):
-        """
-        Catch-all method to to allow a straight pass-through of any attribute that is not supported above.
-        """
-        if item in ('fft', 'linalg', 'random', 'testing'):
-            module = importlib.import_module(self.__module__ + '.' + item)
-            module_class = module.Module
-            return module_class
-        return as_mytensor(getattr(torch, item))
+
+"""
+One-time operations on module load.
+
+  1. Add a 'as_subclass' method to torch.Tensor class, in preparation of:
+  2. 'Patch' (most) of the methods in our TensorBase class to allow for proper subclassing on operations.
+"""
+Tensor.as_subclass = as_subclass
+patch_all()
 
 
-def assert_array_equal(a, b, **kwargs):
-    import numpy.testing as testing
-    if isinstance(a, torch.Tensor):
-        a = a.detach().numpy()
-    if isinstance(b, torch.Tensor):
-        b = b.detach().numpy()
-    return testing.assert_array_equal(a, b, **kwargs)
-
-
-def assert_almost_equal(a, b, **kwargs):
-    import numpy.testing as testing
-    if isinstance(a, torch.Tensor):
-        a = a.detach().numpy()
-    if isinstance(b, torch.Tensor):
-        b = b.detach().numpy()
-
-    if 'decimal' not in kwargs:
-        decimal = 5
-    else:
-        decimal = kwargs.pop('decimal')
-    return testing.assert_almost_equal(a, b, decimal=decimal, **kwargs)
-
-
-def retain_type(from_, to_):
-    """
-    Downcast an object to a more specific type
-    :param from_: Instance to be downcast
-    :param to_: Instance of a class to which we will be down-casting; should be be a subclass of type(from_)
-    :return: A new instance of type type(to_)
-    """
-    if from_ is None:
-        return
-    if not isinstance(to_, type(from_)):
-        return from_
-    typ = type(to_)
-
-    if isinstance(typ, type(None)) or isinstance(from_, typ):
-        return from_
-
-    res = from_.as_subclass(typ)
-    res.__dict__ = to_.__dict__
-    return res
-
-
-def _patch_all():
-    def get_f(fn):
-        def _f(self, *args, **kwargs):
-            res = getattr(super(TensorBase, self), fn)(*args, **kwargs)
-            return retain_type(res, self)
-        return _f
-
-    skips = 'as_subclass __getitem__ __setitem__ __class__ __deepcopy__ __delattr__ __dir__ __doc__ __getattribute__ \
-    __hash__ __init__ __init_subclass__ __new__ __reduce__ __reduce_ex__ __module__ __setstate__'.split()
-
-    t = TensorBase([1])
-    for fn in dir(t):
-        if fn in skips:
-            continue
-        f = getattr(t, fn)
-        if isinstance(f, (MethodWrapperType, BuiltinFunctionType, BuiltinMethodType, MethodType, FunctionType)):
-            setattr(TensorBase, fn, get_f(fn))
-
-
-_patch_all()
+"""
+  3. We do not need to keep a running track of gradients, but can enable gradients with
+  `with torch.enable_grad()` when we do need them.
+"""
+torch.set_grad_enabled(False)

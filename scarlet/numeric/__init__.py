@@ -1,7 +1,8 @@
 USE_TORCH = True
 
 if USE_TORCH:
-    from .torch import Module, assert_array_equal, assert_almost_equal
+    from .torch import Module
+    from .torch.submodules.testing import assert_array_equal, assert_almost_equal
     from .torch import operator as operator
 
 else:
@@ -12,4 +13,3 @@ else:
     assert_almost_equal = testing.assert_almost_equal
 
 np = Module()
-

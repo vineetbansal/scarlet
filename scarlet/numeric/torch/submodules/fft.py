@@ -6,6 +6,13 @@ from scarlet.numeric.torch import as_mytensor
 
 class Module:
 
+    def __getattr__(self, item):
+        """
+        Catch-all method to to allow a straight pass-through of any attribute that is not supported below.
+        """
+        func = getattr(torch, item)
+        return as_mytensor(func)
+
     @staticmethod
     def roll_n(X, axis, n):
         axis = axis % X.ndim  # If a negative index was provided, convert to positive
@@ -155,10 +162,3 @@ class Module:
         N = n // 2 + 1
         results = torch.arange(0, N, dtype=int)
         return results * val
-
-    def __getattr__(self, item):
-        """
-        Catch-all method to to allow a straight pass-through of any attribute that is not supported above.
-        """
-        func = getattr(torch, item)
-        return as_mytensor(func)
