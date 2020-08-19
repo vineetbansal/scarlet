@@ -4,7 +4,6 @@ from scarlet.numeric import np, USE_TORCH
 from autograd import grad
 import proxmin
 from functools import partial
-import weakref
 
 from .component import ComponentTree
 
@@ -66,15 +65,22 @@ class Blend(ComponentTree):
                 import torch
                 with torch.enable_grad():
                     for p in self.parameters:
+                        # By default, Torch accumulates gradients instead of replacing them, so zero them out
                         if p.grad is not None:
                             p.grad.data.zero_()
+                    # Our loss function works with either ndarrays or Tensors -
                     loss = self._loss(*[x._value for x in X])
                     loss.backward(retain_graph=True)
                     return [p.grad.numpy() for p in self.parameters]
 
             def _wrapped_constraint(constraint, X, step):
-                # Constraints are called by proxmin on raw ndarrays;
-                # But for scarlet they might be ndarrays or Tensors, so wrap and unwrap accordingly
+                """
+                Call constraint on a raw ndarray
+                :param constraint: An object of type `Constraint`, that expects ndarray/Tensor and step as input
+                :param X: An ndarray (or a sub-class of ndarray) that we got called with by proxmin
+                :param step: Numeric step value
+                :return: An ndarray (or a sub-class of ndarray) that we can pass back to proxmin
+                """
                 return np.asnumpy(constraint(np.asarray(X), step))
 
             _prox = tuple(partial(_wrapped_constraint, x.constraint) if x.constraint is not None else None for x in X)
@@ -105,6 +111,7 @@ class Blend(ComponentTree):
         Vhat = tuple(x.vhat if x.vhat is not None else numpy.zeros(x.shape) for x in X)
 
         if USE_TORCH:
+            # For passing X to proxmin, we need an ndarray
             X = [x.asnumpy() for x in X]
 
         proxmin.adaprox(

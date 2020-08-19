@@ -5,12 +5,32 @@ from scarlet.prior import Prior
 
 
 class _Param(numpy.ndarray):
-    # Something we can pass on to proxmin
+    """
+    proxmin expects to work with raw ndarrays. This class provides a thin wrapper around an ndarray, something
+    we can pass to proxmin.
+
+    This class mostly mimicks the `Parameter` class provided in scarlet, with a few changes.
+
+    Note that we still retain a reference to the `Parameter` object that it was created from, through the
+    `_value` attribute.
+    """
     def __new__(cls, t):
+        """
+        Create an ndarray from the values of a Parameter object
+        :param t: An instance of type `Parameter` from which to initialize the ndarray
+        :return: A raw ndarray suitable for passing on to proxmin
+        """
+        # The tensor t is most likely gradient-tracked, detach it from the computational graph before trying to access
+        # it's underlying ndarray value
         array = t.detach().numpy()
         obj = numpy.asarray(array, dtype=array.dtype).view(cls)
+
+        # A lot of code expects to be able to access the `_value` attribute of a tracked (boxed) ndarray to access its
+        # raw (unboxed) contents. The `_value` attribute is provided by autograd module. We emulate this functionality
+        # here by using `_value` to refer to the `Parameter` object we are being constructed from.
         obj._value = t
-        obj.name = t.name_
+
+        obj.name = t.name_  # Note: Parameter has an attribute 'name_', not 'name'
         obj.prior = t.prior
         obj.constraint = t.constraint
         obj.step = t.step
@@ -19,7 +39,10 @@ class _Param(numpy.ndarray):
         obj.v = t.v
         obj.vhat = t.vhat
         obj.fixed = t.fixed
-        obj.constructed = True
+
+        # A flag to indicate whether we're done constructing this object
+        obj._constructed = True
+
         return obj
 
     def __array_finalize__(self, obj):
@@ -39,7 +62,7 @@ class _Param(numpy.ndarray):
         return self.view(numpy.ndarray)
 
     def __setattr__(self, key, value):
-        if getattr(self, 'constructed', False):
+        if getattr(self, '_constructed', False):
             return setattr(self._value, key, value)
         else:
             return super().__setattr__(key, value)
@@ -92,7 +115,7 @@ class Parameter(MyTensor):
         fixed=False,
     ):
         obj = array
-        obj.name_ = name
+        obj.name_ = name  # Note: Cannot create an attribute 'name' for a Tensor, hence name_
         if prior is not None:
             assert isinstance(prior, Prior)
         obj.prior = prior

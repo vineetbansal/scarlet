@@ -6,6 +6,12 @@ from .utils import tensor, rebuild_tensor
 
 
 class TensorBase(Tensor):
+    """
+    A dummy subclass of torch.Tensor that exists solely so we can patch its key methods to return instances of itself.
+    See the `wrap` module for more details.
+
+    All of the actual functionality in terms of complex dtypes/fft processing etc. are provided by the `MyTensor` class.
+    """
     pass
 
 
